@@ -57,7 +57,7 @@ index ce81bb5..dfc4e09 100644
      <string name="widget_battery_label">Band battery</string>
      <string name="widget_battery_description">Your strap\'s battery, from the last connection.</string>
 diff --git a/pubspec.yaml b/pubspec.yaml
-index f102c44..c8666d9 100644
+index f102c44..32b54ed 100644
 --- a/pubspec.yaml
 +++ b/pubspec.yaml
 @@ -6,7 +6,7 @@ publish_to: 'none'
@@ -78,7 +78,18 @@ index f102c44..c8666d9 100644
    cupertino_icons: ^1.0.8
  
    # Local pure-Dart packages — the protocol byte codecs and the metric/analytics
-@@ -256,8 +258,8 @@ flutter_launcher_icons:
+@@ -251,13 +253,19 @@ dev_dependencies:
+   # path_provider; declared directly since test/ now imports it).
+   path_provider_platform_interface: ^2.1.0
+ 
++# CM Health: flutter_localizations (SDK) pins intl 0.20.2, while the pinned
++# health plugin still constrains intl <0.20.0. The plugin only uses intl for
++# formatting; forcing 0.20.2 is safe here.
++dependency_overrides:
++  intl: ^0.20.2
++
+ flutter_launcher_icons:
+   android: "launcher_icon"
    ios: true
    image_path: "assets/images/icon.png"
    remove_alpha_ios: true
