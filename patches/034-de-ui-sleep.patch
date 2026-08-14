@@ -1,0 +1,2071 @@
+diff --git a/lib/ui/cycle/cycle_screen.dart b/lib/ui/cycle/cycle_screen.dart
+index 3bf76f0..4e357ee 100644
+--- a/lib/ui/cycle/cycle_screen.dart
++++ b/lib/ui/cycle/cycle_screen.dart
+@@ -89,7 +89,7 @@ class _CycleScreenState extends State<CycleScreen> {
+       if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+             content: Text(
+-                "Couldn't log: ${e is RepositoryException ? e.body : e}")));
++                'Erfassen fehlgeschlagen: ${e is RepositoryException ? e.body : e}')));
+       }
+     }
+   }
+@@ -128,20 +128,20 @@ class _CycleScreenState extends State<CycleScreen> {
+   @override
+   Widget build(BuildContext context) {
+     return AppScaffold(
+-      title: 'Cycle',
+-      subtitle: 'Phase, predictions & body shifts',
++      title: 'Zyklus',
++      subtitle: 'Phase, Prognosen & Körpersignale',
+       actions: [
+         InfoDot(
+-          title: 'Cycle tracking',
++          title: 'Zyklus-Tracking',
+           body:
+-              'Predictions use the calendar method anchored on your logged '
+-              'period starts — an estimate that sharpens as you log more '
+-              'cycles. Everything stays on this phone.',
++              'Prognosen nutzen die Kalendermethode, verankert an deinen '
++              'erfassten Periodenstarts — eine Schätzung, die mit jedem '
++              'erfassten Zyklus genauer wird. Alles bleibt auf diesem Handy.',
+           bullets: const [
+-            'Not medical or contraceptive guidance.',
+-            'Body shifts (temp, resting HR, HRV) are context, not the prediction.',
++            'Keine medizinische Beratung und keine Verhütungsmethode.',
++            'Körpersignale (Temperatur, Ruhepuls, HRV) sind Kontext, nicht die Prognose.',
+           ],
+-          methodNote: 'Log-anchored calendar method · on-device',
++          methodNote: 'Kalendermethode auf Log-Basis · auf dem Gerät',
+         ),
+       ],
+       body: RefreshIndicator(
+@@ -157,10 +157,10 @@ class _CycleScreenState extends State<CycleScreen> {
+             if (_noApi)
+               const StateCard(
+                 icon: OsIcon.calendar,
+-                title: 'Cycle tracking unavailable',
++                title: 'Zyklus-Tracking nicht verfügbar',
+                 message:
+-                    'Pair your strap to log periods and see predictions. '
+-                    'Everything stays on this phone.',
++                    'Kopple dein Band, um Perioden zu erfassen und Prognosen '
++                    'zu sehen. Alles bleibt auf diesem Handy.',
+               )
+             else if (_loading) ...[
+               Skeleton.hero(),
+@@ -169,9 +169,9 @@ class _CycleScreenState extends State<CycleScreen> {
+             ] else if (_error != null)
+               StateCard(
+                 icon: OsIcon.sync,
+-                title: "Couldn't load cycle",
++                title: 'Zyklus konnte nicht geladen werden',
+                 message: _error!,
+-                actionLabel: 'Try again',
++                actionLabel: 'Erneut versuchen',
+                 onAction: _load,
+               )
+             else
+@@ -219,10 +219,10 @@ class CycleContent extends StatelessWidget {
+   // ── phase presentation ──────────────────────────────────────────────────────
+   static const _phaseLabel = {
+     'menstrual': 'Menstruation',
+-    'follicular': 'Follicular phase',
+-    'ovulation': 'Ovulation window',
+-    'luteal': 'Luteal phase',
+-    'unknown': 'Cycle',
++    'follicular': 'Follikelphase',
++    'ovulation': 'Eisprungfenster',
++    'luteal': 'Lutealphase',
++    'unknown': 'Zyklus',
+   };
+ 
+   Color _phaseColor(String p) {
+@@ -249,9 +249,9 @@ class CycleContent extends StatelessWidget {
+     if (d['enabled'] == false) {
+       return StateCard(
+         icon: OsIcon.calendar,
+-        title: 'Cycle tracking is off',
++        title: 'Zyklus-Tracking ist aus',
+         message: (d['note'] as String?) ??
+-            'Enable it in your profile to start tracking.',
++            'Aktiviere es in deinem Profil, um mit dem Tracking zu starten.',
+       );
+     }
+     final phase = (d['phase'] as String?) ?? 'unknown';
+@@ -279,7 +279,7 @@ class CycleContent extends StatelessWidget {
+         // PREDICTION.
+         if (hasPrediction) ...[
+           const SizedBox(height: Sp.x5),
+-          const SectionHeader('Prediction'),
++          const SectionHeader('Prognose'),
+           SurfaceCard(
+             padding:
+                 const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x2),
+@@ -287,21 +287,21 @@ class CycleContent extends StatelessWidget {
+               children: [
+                 DetailRow(
+                   icon: OsIcon.menstrualFlow,
+-                  label: 'Next period',
++                  label: 'Nächste Periode',
+                   value: daysUntil != null && daysUntil >= 0
+-                      ? 'in ${daysUntil.round()} days'
++                      ? 'in ${daysUntil.round()} Tagen'
+                       : _md(next),
+                 ),
+                 if (fertileStart != null && fertileEnd != null)
+                   DetailRow(
+                     icon: OsIcon.heart,
+-                    label: 'Fertile window',
++                    label: 'Fruchtbares Fenster',
+                     value: '${_md(fertileStart)} – ${_md(fertileEnd)}',
+                   ),
+                 if (ovulation != null)
+                   DetailRow(
+                     icon: OsIcon.up,
+-                    label: 'Estimated ovulation',
++                    label: 'Geschätzter Eisprung',
+                     value: _md(ovulation),
+                   ),
+               ],
+@@ -318,13 +318,14 @@ class CycleContent extends StatelessWidget {
+           const SizedBox(height: Sp.x5),
+           Row(
+             children: [
+-              const Expanded(child: SectionHeader('Body this cycle')),
++              const Expanded(child: SectionHeader('Dein Körper in diesem Zyklus')),
+               InfoDot(
+-                title: 'Body this cycle',
++                title: 'Dein Körper in diesem Zyklus',
+                 body:
+-                    'Skin temp and resting HR often rise, and HRV dips, in the '
+-                    'luteal phase. Shown for context — the prediction is based '
+-                    'on your logged periods, not these.',
++                    'Hauttemperatur und Ruhepuls steigen oft in der '
++                    'Lutealphase, die HRV sinkt. Nur als Kontext — die '
++                    'Prognose basiert auf deinen erfassten Perioden, nicht '
++                    'auf diesen Werten.',
+               ),
+             ],
+           ),
+@@ -333,7 +334,7 @@ class CycleContent extends StatelessWidget {
+ 
+         // SYMPTOMS — tap to log how you feel today (feeds the cycle picture).
+         const SizedBox(height: Sp.x5),
+-        const SectionHeader('Symptoms today'),
++        const SectionHeader('Symptome heute'),
+         SurfaceCard(
+           padding: const EdgeInsets.all(Sp.x4),
+           child: Column(
+@@ -356,8 +357,8 @@ class CycleContent extends StatelessWidget {
+               ),
+               const SizedBox(height: Sp.x3),
+               Text(
+-                'Symptoms ride along with your phase + recovery — over time '
+-                'they sharpen the picture.',
++                'Symptome laufen mit Phase + Erholung mit — mit der Zeit '
++                'schärfen sie das Bild.',
+                 style: AppText.captionMuted,
+               ),
+             ],
+@@ -366,7 +367,7 @@ class CycleContent extends StatelessWidget {
+ 
+         // LOG actions.
+         const SizedBox(height: Sp.x5),
+-        const SectionHeader('Log a period'),
++        const SectionHeader('Periode erfassen'),
+         Row(
+           children: [
+             Expanded(
+@@ -376,19 +377,19 @@ class CycleContent extends StatelessWidget {
+                   backgroundColor: DomainAccent.cycle,
+                 ),
+                 icon: const AppIcon(OsIcon.menstrualFlow, size: 18, color: Colors.white),
+-                label: const Text('Period started today'),
++                label: const Text('Periode hat heute begonnen'),
+               ),
+             ),
+             const SizedBox(width: Sp.x3),
+             OutlinedButton(
+-                onPressed: onPickDate, child: const Text('Pick date')),
++                onPressed: onPickDate, child: const Text('Datum wählen')),
+           ],
+         ),
+ 
+         // RECENT LOGS.
+         if (logs.isNotEmpty) ...[
+           const SizedBox(height: Sp.x5),
+-          const SectionHeader('Logged periods'),
++          const SectionHeader('Erfasste Perioden'),
+           SurfaceCard(
+             padding:
+                 const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x2),
+@@ -435,7 +436,7 @@ class CycleContent extends StatelessWidget {
+                   children: [
+                     Text('${cycleDay.round()}',
+                         style: AppText.metric.copyWith(fontSize: 40)),
+-                    Text('DAY',
++                    Text('TAG',
+                         style: AppText.overline
+                             .copyWith(color: AppColors.inkMuted)),
+                   ],
+@@ -444,14 +445,14 @@ class CycleContent extends StatelessWidget {
+         ),
+         const SizedBox(height: Sp.x3),
+         StatusChip(
+-          _phaseLabel[phase] ?? 'Cycle',
++          _phaseLabel[phase] ?? 'Zyklus',
+           tone: ChipTone.neutral,
+         ),
+         const SizedBox(height: Sp.x2),
+         Text(
+           hasDay
+-              ? 'Day ${cycleDay.round()} of ~${meanLen.round()}'
+-              : 'Log a period to begin',
++              ? 'Tag ${cycleDay.round()} von ~${meanLen.round()}'
++              : 'Erfasse eine Periode, um zu starten',
+           style: AppText.bodySoft,
+           textAlign: TextAlign.center,
+         ),
+@@ -486,9 +487,9 @@ class CycleContent extends StatelessWidget {
+             crossAxisAlignment: CrossAxisAlignment.start,
+             mainAxisSize: MainAxisSize.min,
+             children: [
+-              const TileHeader('Skin temp'),
++              const TileHeader('Hauttemperatur'),
+               const SizedBox(height: Sp.x2),
+-              BigStat(value: signed(temp), unit: 'Δ', caption: 'vs baseline'),
++              BigStat(value: signed(temp), unit: 'Δ', caption: 'vs. Baseline'),
+             ],
+           ),
+         ),
+@@ -516,12 +517,12 @@ class CycleContent extends StatelessWidget {
+             crossAxisAlignment: CrossAxisAlignment.start,
+             mainAxisSize: MainAxisSize.min,
+             children: [
+-              const TileHeader('Resting HR'),
++              const TileHeader('Ruhepuls'),
+               const SizedBox(height: Sp.x2),
+               BigStat(
+                 value: rhr?.round().toString(),
+                 unit: 'bpm',
+-                caption: 'this cycle',
++                caption: 'dieser Zyklus',
+               ),
+             ],
+           ),
+diff --git a/lib/ui/journal/custom_journal_field_sheet.dart b/lib/ui/journal/custom_journal_field_sheet.dart
+index 6ec5903..c7d8265 100644
+--- a/lib/ui/journal/custom_journal_field_sheet.dart
++++ b/lib/ui/journal/custom_journal_field_sheet.dart
+@@ -76,18 +76,18 @@ class _CustomFieldSheetState extends State<_CustomFieldSheet> {
+   void _save() {
+     final label = _nameCtrl.text.trim();
+     if (label.isEmpty) {
+-      setState(() => _error = 'Give it a name');
++      setState(() => _error = 'Gib einen Namen an');
+       return;
+     }
+     final key = customJournalFieldKey(label);
+     // A name that slugs to nothing ("???") would produce a bare `custom_`
+     // key that every other such name also produces.
+     if (key == 'custom_') {
+-      setState(() => _error = 'Use at least one letter or number');
++      setState(() => _error = 'Verwende mindestens einen Buchstaben oder eine Zahl');
+       return;
+     }
+     if (widget.existingKeys.contains(key)) {
+-      setState(() => _error = 'You already track something by that name');
++      setState(() => _error = 'Du erfasst bereits etwas mit diesem Namen');
+       return;
+     }
+     Navigator.pop(
+@@ -119,7 +119,7 @@ class _CustomFieldSheetState extends State<_CustomFieldSheet> {
+             mainAxisSize: MainAxisSize.min,
+             crossAxisAlignment: CrossAxisAlignment.start,
+             children: [
+-              Text('Track something else', style: AppText.h2),
++              Text('Noch etwas erfassen', style: AppText.h2),
+               const SizedBox(height: Sp.x4),
+               Flexible(
+                 child: SingleChildScrollView(
+@@ -128,26 +128,26 @@ class _CustomFieldSheetState extends State<_CustomFieldSheet> {
+                     children: [
+                       _field(
+                         controller: _nameCtrl,
+-                        hint: 'Magnesium, screen time, headache…',
++                        hint: 'Magnesium, Bildschirmzeit, Kopfschmerzen…',
+                       ),
+                       const SizedBox(height: Sp.x4),
+-                      _label('What kind of number is it?'),
++                      _label('Was für eine Zahl ist es?'),
+                       Wrap(
+                         spacing: Sp.x2,
+                         runSpacing: Sp.x2,
+                         children: [
+                           ToggleChip(
+-                            'A 1–5 rating',
++                            'Eine Bewertung von 1–5',
+                             selected: _kind == JournalFieldKind.rating,
+                             onTap: () => _selectKind(JournalFieldKind.rating),
+                           ),
+                           ToggleChip(
+-                            'An amount',
++                            'Eine Menge',
+                             selected: _kind == JournalFieldKind.dose,
+                             onTap: () => _selectKind(JournalFieldKind.dose),
+                           ),
+                           ToggleChip(
+-                            'Minutes',
++                            'Minuten',
+                             selected: _kind == JournalFieldKind.duration,
+                             onTap: () =>
+                                 _selectKind(JournalFieldKind.duration),
+@@ -156,10 +156,10 @@ class _CustomFieldSheetState extends State<_CustomFieldSheet> {
+                       ),
+                       if (_kind != JournalFieldKind.rating) ...[
+                         const SizedBox(height: Sp.x4),
+-                        _label('Unit'),
+-                        _field(controller: _unitCtrl, hint: 'mg, ml, cups…'),
++                        _label('Einheit'),
++                        _field(controller: _unitCtrl, hint: 'mg, ml, Tassen…'),
+                         const SizedBox(height: Sp.x4),
+-                        _label('Step size'),
++                        _label('Schrittweite'),
+                         Wrap(
+                           spacing: Sp.x2,
+                           runSpacing: Sp.x2,
+@@ -178,7 +178,7 @@ class _CustomFieldSheetState extends State<_CustomFieldSheet> {
+                           ],
+                         ),
+                         const SizedBox(height: Sp.x4),
+-                        _label('Most you would log in a day'),
++                        _label('Höchstwert, den du an einem Tag eintragen würdest'),
+                         Wrap(
+                           spacing: Sp.x2,
+                           runSpacing: Sp.x2,
+@@ -198,7 +198,7 @@ class _CustomFieldSheetState extends State<_CustomFieldSheet> {
+                         ),
+                         const SizedBox(height: Sp.x4),
+                         ToggleChip(
+-                          'Ask when the last one was',
++                          'Fragen, wann die letzte Einnahme war',
+                           selected: _hasTime,
+                           onTap: () => setState(() => _hasTime = !_hasTime),
+                         ),
+@@ -219,7 +219,7 @@ class _CustomFieldSheetState extends State<_CustomFieldSheet> {
+                 width: double.infinity,
+                 child: FilledButton(
+                   onPressed: _save,
+-                  child: const Text('Start tracking it'),
++                  child: const Text('Mit dem Erfassen starten'),
+                 ),
+               ),
+             ],
+diff --git a/lib/ui/journal/journal_compose_screen.dart b/lib/ui/journal/journal_compose_screen.dart
+index d70aca9..f82e354 100644
+--- a/lib/ui/journal/journal_compose_screen.dart
++++ b/lib/ui/journal/journal_compose_screen.dart
+@@ -116,14 +116,14 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
+       await app.refreshAiReminders(); // tonight's prompt stands down
+       if (!mounted) return;
+       ScaffoldMessenger.of(context).showSnackBar(
+-        const SnackBar(content: Text('Logged for tonight — sleep well.')),
++        const SnackBar(content: Text('Für heute Nacht eingetragen — schlaf gut.')),
+       );
+       Navigator.of(context).maybePop();
+     } catch (e) {
+       if (!mounted) return;
+       setState(() => _saving = false);
+       ScaffoldMessenger.of(context)
+-          .showSnackBar(SnackBar(content: Text('Couldn\'t save: $e')));
++          .showSnackBar(SnackBar(content: Text('Speichern fehlgeschlagen: $e')));
+     }
+   }
+ 
+@@ -166,8 +166,8 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
+         _chatBusy = false;
+         _msgs.add(_ChatMsg(
+             false,
+-            'I couldn\'t reach your AI provider — your words above aren\'t '
+-            'lost. Try again, or switch to Quick log.'));
++            'Ich konnte deinen KI-Anbieter nicht erreichen — deine Worte oben '
++            'sind nicht verloren. Versuch es erneut oder wechsle zum Schnelleintrag.'));
+       });
+     }
+   }
+@@ -179,16 +179,16 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
+     final aiReady = widget.engineOverride != null ||
+         context.watch<CoachConfig>().configured;
+     return AppScaffold(
+-      title: 'Log your day',
++      title: 'Deinen Tag eintragen',
+       children: [
+         if (BriefingStore.journalDoneToday())
+           Padding(
+             padding: const EdgeInsets.only(bottom: Sp.x3),
+-            child: const StatusChip('Logged for today',
++            child: const StatusChip('Für heute eingetragen',
+                 icon: null, tone: ChipTone.positive),
+           ).dsEnter(),
+         SegmentedControl(
+-          options: const ['Quick log', 'AI chat'],
++          options: const ['Schnelleintrag', 'KI-Chat'],
+           index: _mode,
+           expanded: true,
+           onChanged: (i) => setState(() => _mode = i),
+@@ -207,7 +207,7 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+             children: [
+-              Text('HOW WAS TODAY?', style: AppText.overline),
++              Text('WIE WAR DEIN TAG?', style: AppText.overline),
+               const SizedBox(height: Sp.x3),
+               Wrap(
+                 spacing: Sp.x2,
+@@ -224,7 +224,7 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
+                 enabled: _loaded,
+                 style: AppText.body,
+                 decoration: InputDecoration(
+-                  hintText: 'Anything notable — mood, energy, what happened…',
++                  hintText: 'Etwas Besonderes — Stimmung, Energie, was passiert ist…',
+                   hintStyle:
+                       AppText.bodySoft.copyWith(color: AppColors.inkMuted),
+                   filled: true,
+@@ -240,7 +240,7 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
+                 width: double.infinity,
+                 child: FilledButton(
+                   onPressed: _saving ? null : _saveQuick,
+-                  child: Text(_saving ? 'Saving…' : 'Save to journal'),
++                  child: Text(_saving ? 'Speichern…' : 'Im Journal speichern'),
+                 ),
+               ),
+             ],
+@@ -283,11 +283,11 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
+         const SizedBox(height: Sp.x4),
+         StateCard(
+           icon: OsIcon.ai,
+-          title: 'Bring your own AI',
++          title: 'Bring deine eigene KI mit',
+           message:
+-              'Add your AI key to talk through your day and have it logged '
+-              'for you. Quick log works without one.',
+-          actionLabel: 'Add your AI key',
++              'Füge deinen KI-Schlüssel hinzu, um deinen Tag zu besprechen und '
++              'automatisch eintragen zu lassen. Der Schnelleintrag funktioniert auch ohne.',
++          actionLabel: 'KI-Schlüssel hinzufügen',
+           onAction: () => Navigator.of(context).push(themedRoute(
+               (_) => const CoachSettingsScreen(),
+               name: 'CoachSettingsScreen')),
+@@ -299,9 +299,9 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
+         SurfaceCard(
+           level: 0,
+           child: Text(
+-            'Tell me about your day — training, caffeine, stress, how you '
+-            'feel. I\'ll turn it into a journal entry you can review before '
+-            'it\'s saved.',
++            'Erzähl mir von deinem Tag — Training, Koffein, Stress, wie du '
++            'dich fühlst. Ich mache daraus einen Journal-Eintrag, den du vor '
++            'dem Speichern prüfen kannst.',
+             style: AppText.bodySoft,
+           ),
+         ).dsEnter(index: 2),
+@@ -317,7 +317,7 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
+                   strokeWidth: 2, color: AppColors.onAccentSoft),
+             ),
+             const SizedBox(width: Sp.x2),
+-            Text('Listening…', style: AppText.captionMuted),
++            Text('Ich höre zu…', style: AppText.captionMuted),
+           ]),
+         ),
+       if (_proposedTags.isNotEmpty || _proposedNote.isNotEmpty)
+@@ -347,7 +347,7 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
+             textInputAction: TextInputAction.send,
+             onSubmitted: (_) => _sendChat(),
+             decoration: InputDecoration(
+-              hintText: 'How did today go?',
++              hintText: 'Wie ist dein Tag gelaufen?',
+               hintStyle: AppText.bodySoft.copyWith(color: AppColors.inkMuted),
+               filled: true,
+               fillColor: AppColors.surfaceAlt,
+@@ -431,7 +431,7 @@ class JournalProposalCard extends StatelessWidget {
+         child: Column(
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: [
+-            Text('WILL BE LOGGED', style: AppText.overline),
++            Text('WIRD EINGETRAGEN', style: AppText.overline),
+             const SizedBox(height: Sp.x3),
+             if (tags.isNotEmpty)
+               Wrap(
+@@ -450,7 +450,7 @@ class JournalProposalCard extends StatelessWidget {
+               width: double.infinity,
+               child: FilledButton(
+                 onPressed: saving ? null : onSave,
+-                child: Text(saving ? 'Saving…' : 'Save to journal'),
++                child: Text(saving ? 'Speichern…' : 'Im Journal speichern'),
+               ),
+             ),
+           ],
+diff --git a/lib/ui/journal/journal_metric_editor.dart b/lib/ui/journal/journal_metric_editor.dart
+index fbe81a0..f3212fa 100644
+--- a/lib/ui/journal/journal_metric_editor.dart
++++ b/lib/ui/journal/journal_metric_editor.dart
+@@ -74,7 +74,7 @@ class JournalMetricEditor extends StatelessWidget {
+                 Icon(Icons.add_rounded, size: 18, color: AppColors.accent),
+                 const SizedBox(width: Sp.x1),
+                 Text(
+-                  'Track something else',
++                  'Noch etwas erfassen',
+                   style: AppText.label.copyWith(color: AppColors.accent),
+                 ),
+               ],
+@@ -132,7 +132,7 @@ class _FieldRow extends StatelessWidget {
+             if (v != null)
+               Semantics(
+                 button: true,
+-                label: 'Clear ${spec.label}',
++                label: '${spec.label} löschen',
+                 child: Pressable(
+                   pressedScale: 0.9,
+                   onTap: () => onChanged(null),
+@@ -149,7 +149,7 @@ class _FieldRow extends StatelessWidget {
+             if (onRemove != null)
+               Semantics(
+                 button: true,
+-                label: 'Stop tracking ${spec.label}',
++                label: '${spec.label} nicht mehr erfassen',
+                 child: Pressable(
+                   pressedScale: 0.9,
+                   onTap: onRemove,
+@@ -211,7 +211,7 @@ class _RatingDots extends StatelessWidget {
+             child: Semantics(
+               button: true,
+               selected: value != null && value!.round() == i,
+-              label: '${spec.label} $i of $max',
++              label: '${spec.label} $i von $max',
+               child: Pressable(
+                 pressedScale: 0.9,
+                 onTap: () => onChanged(value?.round() == i ? null : i * 1.0),
+@@ -285,7 +285,7 @@ class _Stepper extends StatelessWidget {
+       children: [
+         _StepButton(
+           icon: Icons.remove_rounded,
+-          semanticLabel: 'Less ${spec.label}',
++          semanticLabel: 'Weniger ${spec.label}',
+           onTap: v != null && v.value <= 0 ? null : () => _bump(-spec.step),
+         ),
+         SizedBox(
+@@ -302,7 +302,7 @@ class _Stepper extends StatelessWidget {
+         ),
+         _StepButton(
+           icon: Icons.add_rounded,
+-          semanticLabel: 'More ${spec.label}',
++          semanticLabel: 'Mehr ${spec.label}',
+           onTap: v != null && v.value >= spec.max
+               ? null
+               : () => _bump(spec.step),
+@@ -327,7 +327,7 @@ class _Stepper extends StatelessWidget {
+                     // Prompting for the LAST one is the point: a 200 mg
+                     // morning coffee and a 200 mg evening one are the same
+                     // dose and a completely different night.
+-                    ? 'Last at…'
++                    ? 'Zuletzt um…'
+                     : formatMinuteOfDay(v!.atMinuteOfDay!),
+                 style: AppText.label.copyWith(
+                   color: v?.atMinuteOfDay == null
+diff --git a/lib/ui/journal/journal_screen.dart b/lib/ui/journal/journal_screen.dart
+index bf98663..1e062e6 100644
+--- a/lib/ui/journal/journal_screen.dart
++++ b/lib/ui/journal/journal_screen.dart
+@@ -203,13 +203,13 @@ class _JournalScreenState extends State<JournalScreen> {
+       await api.postJournalMetrics(_editingDate, _metrics);
+       if (!mounted) return;
+       ScaffoldMessenger.of(context).showSnackBar(
+-        SnackBar(content: Text('Saved ${_isToday ? 'today' : _editingDate}')),
++        SnackBar(content: Text('${_isToday ? 'Heute' : _editingDate} gespeichert')),
+       );
+       await _load(); // refresh recent days + insights
+     } catch (e) {
+       if (!mounted) return;
+       ScaffoldMessenger.of(context).showSnackBar(
+-        SnackBar(content: Text('Couldn\'t save — ${_shortErr(e)}')),
++        SnackBar(content: Text('Speichern fehlgeschlagen — ${_shortErr(e)}')),
+       );
+     } finally {
+       if (mounted) setState(() => _saving = false);
+@@ -224,7 +224,7 @@ class _JournalScreenState extends State<JournalScreen> {
+   Widget build(BuildContext context) {
+     return AppScaffold(
+       title: 'Journal',
+-      subtitle: 'What you did — what it moved',
++      subtitle: 'Was du getan hast — was es bewegt hat',
+       actions: [
+         // Talk-it-through entry point (manual + AI chat compose).
+         RoundIconButton(
+@@ -248,9 +248,9 @@ class _JournalScreenState extends State<JournalScreen> {
+             if (_noApi)
+               StateCard(
+                 icon: OsIcon.profile,
+-                title: 'Journal unavailable',
+-                message: 'Pair your strap to log tags and unlock insights '
+-                    'from your own data.',
++                title: 'Journal nicht verfügbar',
++                message: 'Kopple dein Band, um Tags zu erfassen und Einblicke '
++                    'aus deinen eigenen Daten freizuschalten.',
+               ).dsEnter()
+             else if (_loading) ...[
+               Skeleton.box(height: 220),
+@@ -259,9 +259,9 @@ class _JournalScreenState extends State<JournalScreen> {
+             ] else if (_error != null)
+               StateCard(
+                 icon: OsIcon.sync,
+-                title: "Couldn't load journal",
++                title: 'Journal konnte nicht geladen werden',
+                 message: _error!,
+-                actionLabel: 'Try again',
++                actionLabel: 'Erneut versuchen',
+                 onAction: _load,
+               ).dsEnter()
+             else
+@@ -276,21 +276,22 @@ class _JournalScreenState extends State<JournalScreen> {
+     return [
+       _editorCard().dsEnter(index: 0),
+       const SizedBox(height: Sp.x6),
+-      const SectionHeader('Recent days'),
++      const SectionHeader('Letzte Tage'),
+       ..._recentList(),
+       const SizedBox(height: Sp.x6),
+       Row(
+         children: [
+-          const Expanded(child: SectionHeader('What moves your body')),
++          const Expanded(child: SectionHeader('Was deinen Körper bewegt')),
+           InfoDot(
+-            title: 'What moves your body',
++            title: 'Was deinen Körper bewegt',
+             body:
+-                'How what you log tracks with your recovery, sleep and heart '
+-                'data — computed from your own days only. Tags are compared as '
+-                'happened-or-not; numbers are ranked, so five coffees and one '
+-                'are not the same day.',
+-            methodNote: 'Correlation, not cause · tags need ≥3 tagged days, '
+-                'numbers need ≥8 days with a value',
++                'Wie das, was du einträgst, mit deinen Erholungs-, Schlaf- und '
++                'Herzdaten zusammenhängt — berechnet nur aus deinen eigenen '
++                'Tagen. Tags werden als passiert-oder-nicht verglichen; Zahlen '
++                'werden gerankt, sodass fünf Kaffees und einer nicht derselbe '
++                'Tag sind.',
++            methodNote: 'Korrelation, nicht Ursache · Tags brauchen ≥3 markierte '
++                'Tage, Zahlen ≥8 Tage mit Wert',
+           ),
+         ],
+       ),
+@@ -310,7 +311,7 @@ class _JournalScreenState extends State<JournalScreen> {
+             children: [
+               Expanded(
+                 child: Text(
+-                  (_isToday ? 'TODAY' : 'EDITING $_editingDate')
++                  (_isToday ? 'HEUTE' : 'BEARBEITE $_editingDate')
+                       .toUpperCase(),
+                   style: AppText.overline.copyWith(color: AppColors.inkMuted),
+                 ),
+@@ -319,7 +320,7 @@ class _JournalScreenState extends State<JournalScreen> {
+                 Pressable(
+                   pressedScale: 0.94,
+                   onTap: () => _bindEditor(_fmtDate(DateTime.now())),
+-                  child: const StatusChip('Back to today',
++                  child: const StatusChip('Zurück zu heute',
+                       tone: ChipTone.accent),
+                 ),
+             ],
+@@ -346,7 +347,7 @@ class _JournalScreenState extends State<JournalScreen> {
+           ),
+           const SizedBox(height: Sp.x5),
+           Text(
+-            'NUMBERS',
++            'ZAHLEN',
+             style: AppText.overline.copyWith(color: AppColors.inkMuted),
+           ),
+           const SizedBox(height: Sp.x3),
+@@ -364,7 +365,7 @@ class _JournalScreenState extends State<JournalScreen> {
+             maxLines: 5,
+             style: AppText.body,
+             decoration: InputDecoration(
+-              hintText: 'Anything notable? (optional note)',
++              hintText: 'Etwas Besonderes? (optionale Notiz)',
+               hintStyle: AppText.bodySoft.copyWith(color: AppColors.inkMuted),
+               filled: true,
+               fillColor: AppColors.surfaceAlt,
+@@ -381,8 +382,8 @@ class _JournalScreenState extends State<JournalScreen> {
+               onPressed: _saving ? null : _save,
+               child: Text(
+                 _saving
+-                    ? 'Saving…'
+-                    : (_isToday ? 'Save day' : 'Save $_editingDate'),
++                    ? 'Speichern…'
++                    : (_isToday ? 'Tag speichern' : '$_editingDate speichern'),
+               ),
+             ),
+           ),
+@@ -398,8 +399,8 @@ class _JournalScreenState extends State<JournalScreen> {
+       return [
+         const StateCard(
+           icon: OsIcon.calendar,
+-          title: 'No entries yet',
+-          message: 'Tag today above and your recent days will appear here.',
++          title: 'Noch keine Einträge',
++          message: 'Vergib oben Tags für heute, und deine letzten Tage erscheinen hier.',
+         ),
+       ];
+     }
+@@ -424,11 +425,12 @@ class _JournalScreenState extends State<JournalScreen> {
+       return const [
+         StateCard(
+           icon: OsIcon.activity,
+-          title: 'Insights build over time',
++          title: 'Einblicke entstehen mit der Zeit',
+           message:
+-              'Log a few days — tags, numbers or both — and OpenStrap starts '
+-              'surfacing how each habit tracks with your recovery, sleep and '
+-              'heart rate, drawn from your own data.',
++              'Trag ein paar Tage ein — Tags, Zahlen oder beides — und '
++              'CM Health zeigt dir, wie jede Gewohnheit mit deiner Erholung, '
++              'deinem Schlaf und deiner Herzfrequenz zusammenhängt — aus '
++              'deinen eigenen Daten.',
+         ),
+       ];
+     }
+@@ -439,7 +441,7 @@ class _JournalScreenState extends State<JournalScreen> {
+       ],
+       if (_numericInsights.isNotEmpty) ...[
+         if (_insights.isNotEmpty) const SizedBox(height: Sp.x4),
+-        const SectionHeader('How much of it'),
++        const SectionHeader('Wie viel davon'),
+         for (var i = 0; i < _numericInsights.length; i++) ...[
+           JournalDoseInsightCard(
+             insight: _numericInsights[i],
+@@ -450,7 +452,7 @@ class _JournalScreenState extends State<JournalScreen> {
+       const SizedBox(height: Sp.x4),
+       Center(
+         child: Text(
+-          'Patterns from your own data — correlation, not cause.',
++          'Muster aus deinen eigenen Daten — Korrelation, nicht Ursache.',
+           style: AppText.captionMuted,
+         ),
+       ),
+@@ -493,7 +495,7 @@ class JournalDayTile extends StatelessWidget {
+                     overflow: TextOverflow.ellipsis),
+               ),
+               if (active)
+-                const StatusChip('Editing', tone: ChipTone.accent)
++                const StatusChip('In Bearbeitung', tone: ChipTone.accent)
+               else if (onTap != null)
+                 const OsAppIcon(OsIcon.edit, size: 22),
+             ],
+@@ -550,7 +552,7 @@ class JournalInsightCard extends StatelessWidget {
+                     overflow: TextOverflow.ellipsis),
+               ),
+               const SizedBox(width: Sp.x2),
+-              Text('$days days', style: AppText.captionMuted),
++              Text('$days Tage', style: AppText.captionMuted),
+             ],
+           ),
+           const SizedBox(height: Sp.x3),
+@@ -584,7 +586,7 @@ class JournalInsightCard extends StatelessWidget {
+         ),
+         if (nWith > 0) ...[
+           const SizedBox(width: Sp.x2),
+-          Text('· $nWith days', style: AppText.captionMuted),
++          Text('· $nWith Tage', style: AppText.captionMuted),
+         ],
+       ],
+     );
+@@ -602,8 +604,8 @@ String _fmtDate(DateTime d) {
+ }
+ 
+ const _months = [
+-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
++  'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++  'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'
+ ];
+ 
+ /// 'Jun 11' (or 'Today' / 'Yesterday' for the obvious cases). Falls back to the
+@@ -615,8 +617,8 @@ String prettyJournalDate(String iso) {
+   final t0 = DateTime(today.year, today.month, today.day);
+   final d0 = DateTime(parsed.year, parsed.month, parsed.day);
+   final diff = t0.difference(d0).inDays;
+-  if (diff == 0) return 'Today';
+-  if (diff == 1) return 'Yesterday';
++  if (diff == 0) return 'Heute';
++  if (diff == 1) return 'Gestern';
+   return '${_months[parsed.month - 1]} ${parsed.day}';
+ }
+ 
+@@ -663,7 +665,7 @@ class JournalDoseInsightCard extends StatelessWidget {
+     final tint = helped ? AppColors.good : AppColors.warn;
+ 
+     // "per 250 ml", "per unit", or just "per point" for a 1–5 rating.
+-    final per = fieldUnit.isEmpty ? 'point' : fieldUnit;
++    final per = fieldUnit.isEmpty ? 'Punkt' : fieldUnit;
+ 
+     return SurfaceCard(
+       padding: const EdgeInsets.all(Sp.x4),
+@@ -674,7 +676,7 @@ class JournalDoseInsightCard extends StatelessWidget {
+             children: [
+               Expanded(child: Text(field, style: AppText.title)),
+               Text(
+-                '$n days',
++                '$n Tage',
+                 style: AppText.caption.copyWith(color: AppColors.inkMuted),
+               ),
+             ],
+@@ -684,16 +686,16 @@ class JournalDoseInsightCard extends StatelessWidget {
+             slope == null
+                 // Theil–Sen could not fit a slope. The direction still holds,
+                 // so say that and nothing more rather than invent a magnitude.
+-                ? '${rho > 0 ? 'More' : 'Less'} $field goes with '
+-                      'higher $outcome'
+-                : 'About ${_fmtSlope(slope)}'
++                ? '${rho > 0 ? 'Mehr' : 'Weniger'} $field geht mit '
++                      'mehr $outcome einher'
++                : 'Etwa ${_fmtSlope(slope)}'
+                       '${outcomeUnit.isEmpty ? '' : ' $outcomeUnit'} '
+-                      '$outcome per extra $per',
++                      '$outcome pro zusätzlichem $per',
+             style: AppText.body.copyWith(color: tint),
+           ),
+           const SizedBox(height: Sp.x1),
+           Text(
+-            'rank correlation ${rho.toStringAsFixed(2)}',
++            'Rangkorrelation ${rho.toStringAsFixed(2)}',
+             style: AppText.captionMuted,
+           ),
+         ],
+diff --git a/lib/ui/journey/journey_screen.dart b/lib/ui/journey/journey_screen.dart
+index 14b79d2..a495a4d 100644
+--- a/lib/ui/journey/journey_screen.dart
++++ b/lib/ui/journey/journey_screen.dart
+@@ -56,7 +56,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
+     if (api == null) {
+       setState(() {
+         _phase = _Phase.error;
+-        _error = 'Pair your strap first.';
++        _error = 'Kopple zuerst dein Band.';
+       });
+       return;
+     }
+@@ -148,7 +148,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
+       initialDate: initial,
+       firstDate: first,
+       lastDate: today,
+-      helpText: 'Jump to a day',
++      helpText: 'Zu einem Tag springen',
+       selectableDayPredicate: (d) =>
+           DayNav.isSelectable(dayLabelOf(d), navigable),
+     );
+@@ -161,7 +161,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
+   @override
+   Widget build(BuildContext context) {
+     return AppScaffold(
+-      title: 'Your day',
++      title: 'Dein Tag',
+       header: _dayNavBar(),
+       children: [
+         if (_phase == _Phase.loading) ...[
+@@ -173,19 +173,20 @@ class _JourneyScreenState extends State<JourneyScreen> {
+         ] else if (_phase == _Phase.empty)
+           StateCard(
+             icon: OsIcon.calendar,
+-            title: 'Nothing recorded',
++            title: 'Nichts aufgezeichnet',
+             message:
+-                'No heart rate or workouts were captured for this day. Wear '
+-                'your strap and sync to fill in your daily journey.',
+-            actionLabel: 'Try again',
++                'Für diesen Tag wurden weder Herzfrequenz noch Workouts '
++                'erfasst. Trage dein Band und synchronisiere, um deinen Tag '
++                'zu füllen.',
++            actionLabel: 'Erneut versuchen',
+             onAction: _load,
+           )
+         else if (_phase == _Phase.error)
+           StateCard(
+             icon: OsIcon.sync,
+-            title: "Couldn't load your day",
+-            message: _error ?? 'Please try again.',
+-            actionLabel: 'Try again',
++            title: 'Dein Tag konnte nicht geladen werden',
++            message: _error ?? 'Bitte versuch es erneut.',
++            actionLabel: 'Erneut versuchen',
+             onAction: _load,
+           )
+         else
+@@ -206,7 +207,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
+       children: [
+         _NavChevron(
+           icon: OsIcon.arrowLeft,
+-          semanticLabel: 'Previous day',
++          semanticLabel: 'Vorheriger Tag',
+           onTap: prevDay == null ? null : () => _go(prevDay),
+         ),
+         Expanded(
+@@ -215,7 +216,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
+             onTap: _openPicker,
+             child: Semantics(
+               button: true,
+-              label: 'Choose a day',
++              label: 'Tag auswählen',
+               child: Padding(
+                 padding: const EdgeInsets.symmetric(vertical: Sp.x2),
+                 child: Row(
+@@ -234,7 +235,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
+                     ),
+                     if (isToday) ...[
+                       const SizedBox(width: Sp.x2),
+-                      const Tag('today'),
++                      const Tag('heute'),
+                     ],
+                   ],
+                 ),
+@@ -244,7 +245,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
+         ),
+         _NavChevron(
+           icon: OsIcon.arrowRight,
+-          semanticLabel: 'Next day',
++          semanticLabel: 'Nächster Tag',
+           onTap: nextDay == null ? null : () => _go(nextDay),
+         ),
+       ],
+@@ -332,10 +333,10 @@ class JourneyContent extends StatelessWidget {
+   // ── formatting (no intl) ──────────────────────────────────────────────────
+ 
+   static const _months = [
+-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++    'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++    'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+   ];
+-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
++  static const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+ 
+   /// 'YYYY-MM-DD' → 'Wed, Jun 12'. Falls back to the raw string on parse fail.
+   static String prettyDate(String iso) {
+@@ -394,7 +395,7 @@ class JourneyContent extends StatelessWidget {
+           const SizedBox(height: Sp.x3),
+           _movementTile(),
+         ] else
+-          const DetailRetentionNote(what: 'the day lookback'),
++          const DetailRetentionNote(what: 'Tagesrückblick'),
+         ..._workoutsSection(),
+       ]),
+     );
+@@ -416,16 +417,16 @@ class JourneyContent extends StatelessWidget {
+         mainAxisSize: MainAxisSize.min,
+         children: [
+           const TileHeader(
+-            'Movement',
++            'Bewegung',
+             // Generic movement fraction, not steps — the activity art is the
+             // honest match.
+ 
+             trailing: InfoDot(
+-              title: 'Movement',
++              title: 'Bewegung',
+               body:
+-                  'The fraction of each 5-minute block that looked physically '
+-                  'active.',
+-              methodNote: 'A motion signal from the wrist — not steps.',
++                  'Der Anteil jedes 5-Minuten-Blocks, der körperlich aktiv '
++                  'aussah.',
++              methodNote: 'Ein Bewegungssignal vom Handgelenk — keine Schritte.',
+             ),
+           ),
+           const SizedBox(height: Sp.x3),
+@@ -443,7 +444,7 @@ class JourneyContent extends StatelessWidget {
+                 (p.x * 1000).round(),
+               ).toLocal();
+               return '${dt.hour}:${dt.minute.toString().padLeft(2, '0')}'
+-                  '\n${p.y.round()}% movement';
++                  '\n${p.y.round()}% Bewegung';
+             },
+           ),
+         ],
+@@ -482,15 +483,15 @@ class JourneyContent extends StatelessWidget {
+     final strain = _numOf(s['strain']);
+     final meta = [
+       '${_hm(start)} – ${_hm(end)}',
+-      if (avg != null) 'avg $avg',
+-      if (max != null) 'max $max bpm',
++      if (avg != null) 'Ø $avg',
++      if (max != null) 'max. $max bpm',
+     ].join(' · ');
+     return ListRow(
+       icon: workoutTypeOsIcon(type) ?? OsIcon.workouts,
+       iconColor: DomainAccent.strain,
+       title: type.isEmpty ? 'Workout' : _titleCase(type),
+       subtitle: meta,
+-      value: strain == null ? null : '${strain.toStringAsFixed(1)} strain',
++      value: strain == null ? null : '${strain.toStringAsFixed(1)} Belastung',
+       divider: divider,
+     );
+   }
+diff --git a/lib/ui/sleep/sleep_detail_screen.dart b/lib/ui/sleep/sleep_detail_screen.dart
+index fd81972..117721b 100644
+--- a/lib/ui/sleep/sleep_detail_screen.dart
++++ b/lib/ui/sleep/sleep_detail_screen.dart
+@@ -95,7 +95,7 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
+     if (api == null) {
+       setState(() {
+         _phase = _Phase.error;
+-        _error = 'Not signed in.';
++        _error = 'Nicht angemeldet.';
+       });
+       return;
+     }
+@@ -128,10 +128,10 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
+   // ── formatting (no intl) ────────────────────────────────────────────────────
+ 
+   static const _months = [
+-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++    'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++    'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+   ];
+-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
++  static const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+ 
+   /// 'Wed, Jun 11' from the 'YYYY-MM-DD' param (no intl).
+   String _prettyDate() {
+@@ -162,13 +162,13 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
+     final onset = await showTimePicker(
+       context: context,
+       initialTime: todFrom(existingOnset, const TimeOfDay(hour: 23, minute: 0)),
+-      helpText: 'When did you fall asleep?',
++      helpText: 'Wann bist du eingeschlafen?',
+     );
+     if (onset == null || !mounted) return;
+     final wake = await showTimePicker(
+       context: context,
+       initialTime: todFrom(existingWake, const TimeOfDay(hour: 7, minute: 0)),
+-      helpText: 'When did you wake up?',
++      helpText: 'Wann bist du aufgewacht?',
+     );
+     if (wake == null || !mounted) return;
+ 
+@@ -234,8 +234,10 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
+       padding: const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x2),
+       child: ListRow(
+         icon: OsIcon.bedtime,
+-        title: naps.length == 1 ? 'Daytime nap' : '${naps.length} daytime naps',
+-        subtitle: 'Tap for the full breakdown',
++        title: naps.length == 1
++            ? 'Nickerchen am Tag'
++            : '${naps.length} Nickerchen am Tag',
++        subtitle: 'Tippe für die volle Aufschlüsselung',
+         value: value,
+         onTap: _openPeriods,
+       ),
+@@ -277,13 +279,15 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
+       return [
+         StateCard(
+           icon: OsIcon.sleep,
+-          title: 'No sleep recorded for this night',
++          title: 'Kein Schlaf für diese Nacht aufgezeichnet',
+           message: naps.isEmpty
+-              ? 'Wear your strap overnight and sync — your breakdown '
+-                  'appears once a night has been recorded.'
+-              : 'No overnight sleep was detected, so there is no stage '
+-                  'breakdown for this day. Daytime sleep is listed below.',
+-          actionLabel: 'Add sleep times',
++              ? 'Trage dein Band über Nacht und synchronisiere — deine '
++                  'Aufschlüsselung erscheint, sobald eine Nacht '
++                  'aufgezeichnet wurde.'
++              : 'Es wurde kein Nachtschlaf erkannt, daher gibt es keine '
++                  'Phasen-Aufschlüsselung für diesen Tag. Schlaf am Tag '
++                  'ist unten aufgeführt.',
++          actionLabel: 'Schlafzeiten hinzufügen',
+           onAction: _editSleepTimes,
+         ),
+         if (naps.isNotEmpty) ...[
+@@ -296,9 +300,9 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
+       return [
+         StateCard(
+           icon: OsIcon.sync,
+-          title: "Couldn't load this night",
+-          message: _error ?? 'Please try again.',
+-          actionLabel: 'Try again',
++          title: 'Diese Nacht konnte nicht geladen werden',
++          message: _error ?? 'Bitte versuch es erneut.',
++          actionLabel: 'Erneut versuchen',
+           onAction: _load,
+         ),
+       ];
+@@ -326,7 +330,7 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
+       );
+     }
+     return AppScaffold(
+-      title: 'Sleep',
++      title: 'Schlaf',
+       subtitle: _prettyDate(),
+       actions: [
+         // All sleeps of the day (naps included) — the multi-period view.
+@@ -550,7 +554,7 @@ class SleepNightContent extends StatelessWidget {
+         const SizedBox(height: Sp.x2),
+         detailedAvailable(date)
+             ? _hypnogramTile()
+-            : const DetailRetentionNote(what: 'sleep hypnogram'),
++            : const DetailRetentionNote(what: 'Schlaf-Hypnogramm'),
+         const SizedBox(height: Sp.x3),
+         _stageBreakdown(),
+         if (detailedAvailable(date) && _cycles.isNotEmpty) ...[
+@@ -572,7 +576,7 @@ class SleepNightContent extends StatelessWidget {
+         ],
+         if (_hasNocturnal) ...[
+           const SizedBox(height: Sp.x5),
+-          const SectionHeader('Nocturnal heart'),
++          const SectionHeader('Nächtliches Herz'),
+           _nocturnalTile(),
+         ],
+         if (_wristOri['dominant'] is String) ...[
+@@ -602,15 +606,16 @@ class SleepNightContent extends StatelessWidget {
+           Row(
+             children: [
+               Expanded(
+-                child: Text('Estimated from your heart rate',
++                child: Text('Aus deiner Herzfrequenz geschätzt',
+                     style: AppText.title),
+               ),
+               InfoDot(
+-                title: 'Estimated night',
++                title: 'Geschätzte Nacht',
+                 body:
+-                    'We couldn\'t detect this night from movement, so we '
+-                    'estimated it from your heart-rate dip. Confirm or correct '
+-                    'the timing.',
++                    'Wir konnten diese Nacht nicht aus deiner Bewegung '
++                    'erkennen, also haben wir sie aus dem Absinken deiner '
++                    'Herzfrequenz geschätzt. Bestätige oder korrigiere die '
++                    'Zeiten.',
+               ),
+             ],
+           ),
+@@ -619,11 +624,11 @@ class SleepNightContent extends StatelessWidget {
+             Expanded(
+               child: FilledButton(
+                 onPressed: onConfirmFallback,
+-                child: const Text('Looks right'),
++                child: const Text('Passt so'),
+               ),
+             ),
+             const SizedBox(width: Sp.x3),
+-            TextButton(onPressed: onEditTimes, child: const Text('Edit')),
++            TextButton(onPressed: onEditTimes, child: const Text('Bearbeiten')),
+           ]),
+         ],
+       ),
+@@ -640,12 +645,14 @@ class SleepNightContent extends StatelessWidget {
+         const SizedBox(width: Sp.x3),
+         Expanded(
+           child: Text(
+-            confirmed ? 'You confirmed these times' : 'You set these times',
++            confirmed
++                ? 'Du hast diese Zeiten bestätigt'
++                : 'Du hast diese Zeiten festgelegt',
+             style: AppText.caption,
+           ),
+         ),
+-        TextButton(onPressed: onEditTimes, child: const Text('Edit')),
+-        TextButton(onPressed: onClearOverride, child: const Text('Use auto')),
++        TextButton(onPressed: onEditTimes, child: const Text('Bearbeiten')),
++        TextButton(onPressed: onClearOverride, child: const Text('Automatik')),
+       ]),
+     );
+   }
+@@ -660,8 +667,8 @@ class SleepNightContent extends StatelessWidget {
+       padding: const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x2),
+       child: ListRow(
+         icon: OsIcon.bedtime,
+-        title: n == 1 ? 'Daytime nap' : '$n daytime naps',
+-        subtitle: 'Not included in the night above',
++        title: n == 1 ? 'Nickerchen am Tag' : '$n Nickerchen am Tag',
++        subtitle: 'Nicht in der Nacht oben enthalten',
+         value: _hm(_napMin),
+         onTap: onOpenPeriods,
+       ),
+@@ -674,7 +681,7 @@ class SleepNightContent extends StatelessWidget {
+     return Center(
+       child: TextButton(
+         onPressed: onEditTimes,
+-        child: Text('Sleep times look off? Fix them',
++        child: Text('Schlafzeiten stimmen nicht? Korrigiere sie',
+             style: AppText.caption.copyWith(color: AppColors.inkMuted)),
+       ),
+     );
+@@ -704,19 +711,20 @@ class SleepNightContent extends StatelessWidget {
+                     const SizedBox(width: Sp.x2),
+                     Flexible(
+                       child: Text(
+-                        'TIME ASLEEP',
++                        'SCHLAFZEIT',
+                         style: AppText.overline,
+                         maxLines: 1,
+                         overflow: TextOverflow.ellipsis,
+                       ),
+                     ),
+                     InfoDot(
+-                      title: 'Time asleep',
++                      title: 'Schlafzeit',
+                       body:
+-                          'Actual sleep inside your night window — awake time '
+-                          'is excluded. The ring shows it against your need.',
++                          'Tatsächlicher Schlaf innerhalb deines Nachtfensters '
++                          '— Wachzeit ist ausgeschlossen. Der Ring zeigt ihn '
++                          'im Verhältnis zu deinem Bedarf.',
+                       methodNote:
+-                          'van Hees z-angle sleep window · asleep/awake accounting',
++                          'van-Hees-z-Winkel-Schlaffenster · Schlaf/Wach-Bilanz',
+                     ),
+                   ],
+                 ),
+@@ -731,7 +739,9 @@ class SleepNightContent extends StatelessWidget {
+                   ),
+                 const SizedBox(height: Sp.x1),
+                 Text(
+-                  need == null ? 'No sleep need set' : 'of ${_hours(need)}h need',
++                  need == null
++                      ? 'Kein Schlafbedarf festgelegt'
++                      : 'von ${_hours(need)}h Bedarf',
+                   style: AppText.bodySoft,
+                 ),
+               ],
+@@ -746,7 +756,7 @@ class SleepNightContent extends StatelessWidget {
+             sweepFraction: 0.75,
+             endDot: !t.isNaN,
+             valueText: t.isNaN ? '—' : '${(t.clamp(0, 1) * 100).round()}%',
+-            label: 'of need',
++            label: 'vom Bedarf',
+           ),
+         ],
+       ),
+@@ -772,13 +782,13 @@ class SleepNightContent extends StatelessWidget {
+       left: [
+         BentoTile(
+           accent: DomainAccent.sleep,
+-          onLongPress: () => info('To bed',
+-              'When you fell asleep — the start of the detected window.'),
++          onLongPress: () => info('Ins Bett',
++              'Wann du eingeschlafen bist — der Beginn des erkannten Fensters.'),
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+             mainAxisSize: MainAxisSize.min,
+             children: [
+-              const TileHeader('To bed'),
++              const TileHeader('Ins Bett'),
+               const SizedBox(height: Sp.x2),
+               BigStat(value: onset == null ? null : _clock(onset)),
+             ],
+@@ -788,15 +798,15 @@ class SleepNightContent extends StatelessWidget {
+           tone: BentoTone.ink,
+           accent: DomainAccent.recovery,
+           onLongPress: () => info(
+-            'Sleep efficiency',
+-            'Time asleep as a share of time in bed.',
+-            '${_hm(_inBedMin)} in bed · ${_hm(_durationMin)} asleep · ${_hm(_awakeMin)} awake',
++            'Schlafeffizienz',
++            'Schlafzeit als Anteil der Zeit im Bett.',
++            '${_hm(_inBedMin)} im Bett · ${_hm(_durationMin)} geschlafen · ${_hm(_awakeMin)} wach',
+           ),
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+             mainAxisSize: MainAxisSize.min,
+             children: [
+-              const TileHeader('Efficiency'),
++              const TileHeader('Effizienz'),
+               const SizedBox(height: Sp.x2),
+               Row(
+                 children: [
+@@ -834,13 +844,13 @@ class SleepNightContent extends StatelessWidget {
+       // bento, so same list-index = same row.
+       right: [
+         BentoTile(
+-          onLongPress: () => info(
+-              'Woke', 'When you woke for the day — the end of the window.'),
++          onLongPress: () => info('Aufgewacht',
++              'Wann du für den Tag aufgewacht bist — das Ende des Fensters.'),
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+             mainAxisSize: MainAxisSize.min,
+             children: [
+-              const TileHeader('Woke'),
++              const TileHeader('Aufgewacht'),
+               const SizedBox(height: Sp.x2),
+               BigStat(value: wake == null ? null : _clock(wake)),
+             ],
+@@ -849,19 +859,19 @@ class SleepNightContent extends StatelessWidget {
+         BentoTile(
+           tone: noDebt ? BentoTone.paper : BentoTone.soft,
+           accent: DomainAccent.sleep,
+-          onLongPress: () => info('Sleep debt',
+-              'Sleep owed from recent short nights. It decays as you catch up.'),
++          onLongPress: () => info('Schlafdefizit',
++              'Schlaf, der dir aus kurzen Nächten fehlt. Es baut sich ab, wenn du aufholst.'),
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+             mainAxisSize: MainAxisSize.min,
+             children: [
+-              const TileHeader('Sleep debt'),
++              const TileHeader('Schlafdefizit'),
+               const SizedBox(height: Sp.x2),
+               BigStat(
+-                value: debt == null ? null : (noDebt ? 'None' : _hm(debt)),
++                value: debt == null ? null : (noDebt ? 'Keins' : _hm(debt)),
+                 caption: debt == null
+                     ? null
+-                    : (noDebt ? 'all caught up' : 'carried over'),
++                    : (noDebt ? 'alles aufgeholt' : 'übertragen'),
+                 captionAccent: !noDebt,
+               ),
+             ],
+@@ -879,19 +889,20 @@ class SleepNightContent extends StatelessWidget {
+       children: [
+         const OsAppIcon(OsIcon.sleepHypnogram, size: 34),
+         const SizedBox(width: Sp.x2),
+-        Text('Stages', style: AppText.h2),
++        Text('Phasen', style: AppText.h2),
+         const SizedBox(width: Sp.x2),
+         if (_stagesBeta) const Tag('est'),
+         InfoDot(
+-          title: 'Estimated stages',
++          title: 'Geschätzte Phasen',
+           body:
+-              'Stages are inferred from heart rate and motion at the wrist — '
+-              'no EEG. Trust the duration and efficiency above first.',
++              'Die Phasen werden aus Herzfrequenz und Bewegung am Handgelenk '
++              'abgeleitet — kein EEG. Vertraue zuerst Dauer und Effizienz '
++              'weiter oben.',
+           bullets: const [
+-            'REM can read high on wrist data',
+-            'Deep is an experimental low-confidence overlay',
++            'REM kann auf Handgelenkdaten zu hoch ausfallen',
++            'Tiefschlaf ist ein experimentelles Overlay mit geringer Sicherheit',
+           ],
+-          methodNote: 'Wrist actigraphy + HR staging · low confidence',
++          methodNote: 'Aktigrafie am Handgelenk + HF-Staging · geringe Sicherheit',
+         ),
+         const Spacer(),
+       ],
+@@ -909,7 +920,7 @@ class SleepNightContent extends StatelessWidget {
+           ? SizedBox(
+               height: 64,
+               child: Center(
+-                child: Text('No hypnogram for this night',
++                child: Text('Kein Hypnogramm für diese Nacht',
+                     style: AppText.captionMuted),
+               ),
+             )
+@@ -963,16 +974,16 @@ class SleepNightContent extends StatelessWidget {
+           Row(
+             children: [
+               Expanded(
+-                child: TileHeader('Cycles',
++                child: TileHeader('Zyklen',
+                     trailing: Tag('beta', color: AppColors.coral)),
+               ),
+               InfoDot(
+-                title: 'Sleep cycles',
++                title: 'Schlafzyklen',
+                 body:
+-                    'Each rise-and-fall of your overnight heart-rate '
+-                    'variability is one sleep cycle (~90 min). Diamonds mark '
+-                    'the boundaries between cycles.',
+-                methodNote: 'Fractal-cycle method on nocturnal HRV',
++                    'Jedes Auf und Ab deiner nächtlichen '
++                    'Herzfrequenzvariabilität ist ein Schlafzyklus (~90 min). '
++                    'Rauten markieren die Grenzen zwischen Zyklen.',
++                methodNote: 'Fraktal-Zyklus-Methode auf nächtlicher HRV',
+               ),
+             ],
+           ),
+@@ -983,8 +994,8 @@ class SleepNightContent extends StatelessWidget {
+               BigStat(
+                 value: '${cycles.length}',
+                 caption: _cyclesMean == null
+-                    ? 'ultradian NREM–REM cycles'
+-                    : '~${_hm(_cyclesMean)} per cycle',
++                    ? 'ultradiane NREM–REM-Zyklen'
++                    : '~${_hm(_cyclesMean)} pro Zyklus',
+                 size: BigStatSize.md,
+               ),
+             ],
+@@ -1020,7 +1031,7 @@ class SleepNightContent extends StatelessWidget {
+             SizedBox(
+               height: 48,
+               child: Center(
+-                child: Text('Not enough overnight HRV to resolve cycles',
++                child: Text('Nicht genug nächtliche HRV, um Zyklen zu erkennen',
+                     style: AppText.captionMuted),
+               ),
+             ),
+@@ -1053,32 +1064,32 @@ class SleepNightContent extends StatelessWidget {
+         children: [
+           Row(
+             children: [
+-              Text('Advanced stages', style: AppText.h2),
++              Text('Erweiterte Phasen', style: AppText.h2),
+               const SizedBox(width: Sp.x2),
+               Tag('beta', color: AppColors.coral),
+               InfoDot(
+-                title: 'Advanced stages',
++                title: 'Erweiterte Phasen',
+                 body:
+-                    'A second, independent 4-class estimate (Cole–Kripke + '
+-                    'HR variability). Wrist autonomic — not PSG. Use it as a '
+-                    'sanity check on the stages above.',
++                    'Eine zweite, unabhängige 4-Klassen-Schätzung (Cole–Kripke '
++                    '+ HF-Variabilität). Autonomik am Handgelenk — kein PSG. '
++                    'Nutze sie als Gegenprobe zu den Phasen oben.',
+               ),
+               const Spacer(),
+             ],
+           ),
+           const SizedBox(height: Sp.x2),
+-          DetailRow(label: 'Sleep onset latency', value: mins('sol_s')),
++          DetailRow(label: 'Einschlaflatenz', value: mins('sol_s')),
+           DetailRow(
+-              label: 'REM latency',
++              label: 'REM-Latenz',
+               value: remLat == null ? '—' : '${(remLat / 60).round()} min'),
+           DetailRow(
+-              label: 'Disturbances',
++              label: 'Störungen',
+               value: dist == null ? '—' : '${dist.round()}'),
+-          DetailRow(label: 'Deep', value: minsFromMin('deep_min')),
+-          DetailRow(label: 'Light', value: minsFromMin('light_min')),
++          DetailRow(label: 'Tiefschlaf', value: minsFromMin('deep_min')),
++          DetailRow(label: 'Leichtschlaf', value: minsFromMin('light_min')),
+           DetailRow(label: 'REM', value: minsFromMin('rem_min')),
+           if (eff != null)
+-            DetailRow(label: 'Efficiency', value: '${(eff * 100).round()}%'),
++            DetailRow(label: 'Effizienz', value: '${(eff * 100).round()}%'),
+         ],
+       ),
+     );
+@@ -1112,9 +1123,9 @@ class SleepNightContent extends StatelessWidget {
+           Row(
+             children: [
+               const Expanded(
+-                  child: TileHeader('Sleeping HR')),
++                  child: TileHeader('Herzfrequenz im Schlaf')),
+               if (dip != null)
+-                StatusChip('dip ${(dip * 100).round()}%',
++                StatusChip('Dip ${(dip * 100).round()}%',
+                     tone: ChipTone.positive),
+             ],
+           ),
+@@ -1122,21 +1133,21 @@ class SleepNightContent extends StatelessWidget {
+           BigStat(
+             value: avg == null ? null : '$avg',
+             unit: 'bpm',
+-            caption: elevated ? 'above your baseline tonight' : null,
++            caption: elevated ? 'heute Nacht über deiner Baseline' : null,
+             captionAccent: elevated,
+           ),
+           const SizedBox(height: Sp.x4),
+           Row(children: [
+-            _nStat('NADIR', nadir == null ? '—' : '$nadir',
+-                nadir == null ? '' : 'bpm @ ${_clock(nadirTs)}'),
+-            _nStat('WAKING', dayHr == null ? '—' : '$dayHr',
+-                dayHr == null ? '' : 'bpm avg'),
++            _nStat('TIEFPUNKT', nadir == null ? '—' : '$nadir',
++                nadir == null ? '' : 'bpm um ${_clock(nadirTs)}'),
++            _nStat('WACH', dayHr == null ? '—' : '$dayHr',
++                dayHr == null ? '' : 'bpm Ø'),
+             _nStat(
+-                'VS BASE',
++                'VS. BASIS',
+                 vsBase == null
+                     ? '—'
+                     : '${vsBase > 0 ? '+' : ''}${vsBase.toStringAsFixed(1)}',
+-                vsBase == null ? 'building' : 'bpm'),
++                vsBase == null ? 'im Aufbau' : 'bpm'),
+           ]),
+           // Respiratory/oxygen pair on their own row — keeps the cardiac row
+           // above from getting cramped, and reads as one grouped "the rest of
+@@ -1146,19 +1157,19 @@ class SleepNightContent extends StatelessWidget {
+             Builder(builder: (context) {
+               return Row(children: [
+                 if (respVal != null)
+-                  _nStat('BREATH', respVal.toStringAsFixed(1), '/min · beta'),
++                  _nStat('ATMUNG', respVal.toStringAsFixed(1), '/min · beta'),
+                 if (hasSpo2)
+                   _nStat(
+-                    'O2 DIPS',
++                    'O2-DIPS',
+                     odiPerHour?.toStringAsFixed(1) ?? '—',
+-                    '/h overnight — tap for trend',
++                    '/h über Nacht — tippe für Trend',
+                     // Tappable into its own trend (same generic bars every
+                     // other metric uses) — restores the drill-down the old
+                     // Heart-tab/Today-tile versions had, without a second
+                     // "Trends" row restating the same number.
+                     onTap: () => openTrend(
+                       context,
+-                      title: 'Overnight oxygen dips',
++                      title: 'Nächtliche Sauerstoff-Dips',
+                       metric: 'spo2',
+                       icon: OsIcon.hydration,
+                       accent: DomainAccent.oxygen,
+@@ -1174,14 +1185,15 @@ class SleepNightContent extends StatelessWidget {
+             const SizedBox(height: Sp.x3),
+             Row(
+               children: [
+-                const StatusChip('Above baseline overnight',
++                const StatusChip('Über Nacht über der Baseline',
+                     icon: OsIcon.activity, tone: ChipTone.warn),
+                 InfoDot(
+-                  title: 'Elevated overnight HR',
++                  title: 'Erhöhte Herzfrequenz über Nacht',
+                   body:
+-                      'Overnight heart rate ran above your baseline — often an '
+-                      'early cue of fighting something off or under-recovery. '
+-                      'A signal, not a diagnosis.',
++                      'Deine Herzfrequenz lag über Nacht über deiner Baseline '
++                      '— oft ein frühes Zeichen, dass dein Körper etwas '
++                      'abwehrt oder untererholt ist. Ein Signal, keine '
++                      'Diagnose.',
+                 ),
+               ],
+             ),
+@@ -1223,17 +1235,17 @@ class SleepNightContent extends StatelessWidget {
+   String _prettyOrientation(String pos) {
+     switch (pos) {
+       case 'supine':
+-        return 'Wrist facing up';
++        return 'Handgelenk nach oben';
+       case 'prone':
+-        return 'Wrist facing down';
++        return 'Handgelenk nach unten';
+       case 'lateral_left':
+-        return 'Wrist tilted left';
++        return 'Handgelenk nach links geneigt';
+       case 'lateral_right':
+-        return 'Wrist tilted right';
++        return 'Handgelenk nach rechts geneigt';
+       case 'upright':
+-        return 'Arm raised';
++        return 'Arm erhoben';
+       default:
+-        return 'Mixed / unknown';
++        return 'Gemischt / unbekannt';
+     }
+   }
+ 
+@@ -1257,11 +1269,12 @@ class SleepNightContent extends StatelessWidget {
+                 child: Text(_prettyOrientation(dominant), style: AppText.title)),
+             Tag('proxy', color: AppColors.inkSoft),
+             InfoDot(
+-              title: 'Wrist orientation',
++              title: 'Handgelenk-Ausrichtung',
+               body:
+-                  'Wrist tilt from the band\'s motion sensor — a position '
+-                  'PROXY, not your body position. Your arm moves independently '
+-                  'of your torso, so this can\'t tell back from side sleeping.',
++                  'Neigung des Handgelenks aus dem Bewegungssensor des Bands '
++                  '— ein Positions-PROXY, nicht deine Körperlage. Dein Arm '
++                  'bewegt sich unabhängig vom Rumpf, daher lässt sich '
++                  'Rückenlage nicht von Seitenlage unterscheiden.',
+             ),
+           ]),
+           if (entries.isNotEmpty) ...[
+@@ -1278,7 +1291,7 @@ class SleepNightContent extends StatelessWidget {
+               ),
+           ],
+           const SizedBox(height: 2),
+-          Text('$changes orientation changes', style: AppText.captionMuted),
++          Text('$changes Lagewechsel', style: AppText.captionMuted),
+         ],
+       ),
+     );
+@@ -1291,66 +1304,66 @@ class SleepNightContent extends StatelessWidget {
+       TrendMetricRow(
+           icon: OsIcon.sleep,
+           accent: DomainAccent.sleep,
+-          label: 'Time asleep',
++          label: 'Schlafzeit',
+           info: infoFor('sleep'),
+           value: _hm(_durationMin),
+           metric: 'sleep',
+-          trendTitle: 'Sleep',
++          trendTitle: 'Schlaf',
+           valueFmt: (v) => v == 0 ? '' : (v / 60).toStringAsFixed(1)),
+       if (_efficiency != null)
+         TrendMetricRow(
+             icon: OsIcon.activity,
+             accent: AppColors.good,
+-            label: 'Efficiency',
++            label: 'Effizienz',
+             info: infoFor('efficiency'),
+             value: '${(_efficiency! * 100).round()}',
+             unit: '%',
+             metric: 'efficiency',
+-            trendTitle: 'Sleep efficiency'),
++            trendTitle: 'Schlafeffizienz'),
+       if (_lightMin != null)
+         TrendMetricRow(
+             icon: OsIcon.lightSleep,
+             accent: DomainAccent.stageLight,
+-            label: 'Light sleep',
++            label: 'Leichtschlaf',
+             info: infoFor('light'),
+             value: _hm(_lightMin),
+             metric: 'light',
+-            trendTitle: 'Light sleep'),
++            trendTitle: 'Leichtschlaf'),
+       if (_deepMin != null)
+         TrendMetricRow(
+             icon: OsIcon.deepSleep,
+             accent: DomainAccent.stageDeep,
+-            label: 'Deep sleep',
++            label: 'Tiefschlaf',
+             info: infoFor('deep'),
+             value: _hm(_deepMin),
+             metric: 'deep',
+-            trendTitle: 'Deep sleep'),
++            trendTitle: 'Tiefschlaf'),
+       if (_remMin != null)
+         TrendMetricRow(
+             icon: OsIcon.heartRate,
+             accent: DomainAccent.stageRem,
+-            label: 'REM sleep',
++            label: 'REM-Schlaf',
+             info: infoFor('rem'),
+             value: _hm(_remMin),
+             metric: 'rem',
+-            trendTitle: 'REM sleep'),
++            trendTitle: 'REM-Schlaf'),
+       if (_regularity != null)
+         TrendMetricRow(
+             icon: OsIcon.calendar,
+             accent: AppColors.good,
+-            label: 'Consistency',
++            label: 'Konsistenz',
+             info: infoFor('regularity'),
+             value: '${_regularity!.round()}',
+             metric: 'regularity',
+-            trendTitle: 'Sleep consistency')
++            trendTitle: 'Schlafkonsistenz')
+       else
+         // Honest gated state: SRI needs several nights of sleep timing.
+         MetricRow(
+             icon: OsIcon.calendar,
+             accent: AppColors.inkSoft,
+-            label: 'Consistency',
++            label: 'Konsistenz',
+             info: infoFor('regularity'),
+-            value: 'Need a few more nights'),
++            value: 'Braucht noch ein paar Nächte'),
+     ]);
+   }
+ }
+diff --git a/lib/ui/sleep/sleep_periods_screen.dart b/lib/ui/sleep/sleep_periods_screen.dart
+index 9b2c4b4..dfec6fe 100644
+--- a/lib/ui/sleep/sleep_periods_screen.dart
++++ b/lib/ui/sleep/sleep_periods_screen.dart
+@@ -39,7 +39,7 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+     if (api == null) {
+       setState(() {
+         _phase = _Phase.error;
+-        _error = 'Not signed in.';
++        _error = 'Nicht angemeldet.';
+       });
+       return;
+     }
+@@ -86,7 +86,7 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+     final start = await showTimePicker(
+       context: context,
+       initialTime: const TimeOfDay(hour: 14, minute: 0),
+-      helpText: 'Nap started',
++      helpText: 'Beginn des Nickerchens',
+     );
+     if (start == null || !mounted) return;
+     final end = await showTimePicker(
+@@ -95,7 +95,7 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+         hour: (start.hour + 1) % 24,
+         minute: start.minute,
+       ),
+-      helpText: 'Nap ended',
++      helpText: 'Ende des Nickerchens',
+     );
+     if (end == null || !mounted) return;
+ 
+@@ -113,16 +113,16 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+ 
+     if (!manualNapWindowIsValid(startTs, endTs)) {
+       _say(
+-        'A nap runs from ${kMinManualNapSec ~/ 60} minutes to '
+-        '${kMaxManualNapSec ~/ 3600} hours. Longer than that belongs in your '
+-        'main sleep.',
++        'Ein Nickerchen dauert ${kMinManualNapSec ~/ 60} Minuten bis '
++        '${kMaxManualNapSec ~/ 3600} Stunden. Alles darüber gehört zu deinem '
++        'Hauptschlaf.',
+       );
+       return;
+     }
+     if (napOverlapsExisting(startTs, endTs, _sleepWindows)) {
+       // Silently merging two overlapping entries would inflate the day's total
+       // while hiding the mistake.
+-      _say('That overlaps a sleep already on this day.');
++      _say('Das überschneidet sich mit einem Schlaf an diesem Tag.');
+       return;
+     }
+ 
+@@ -184,7 +184,7 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+       // already in flight is skipped rather than queued. Either way the row is
+       // saved and will apply next time that day is rebuilt — saying nothing
+       // would look like the tap did nothing at all.
+-      _say('Saved. It will show once this day is rebuilt.');
++      _say('Gespeichert. Es erscheint, sobald dieser Tag neu berechnet wurde.');
+     }
+   }
+ 
+@@ -198,12 +198,12 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+   @override
+   Widget build(BuildContext context) {
+     return AppScaffold(
+-      title: 'Sleep periods',
+-      subtitle: 'Every sleep, naps included',
++      title: 'Schlafperioden',
++      subtitle: 'Jeder Schlaf, inklusive Nickerchen',
+       actions: [
+         Semantics(
+           button: true,
+-          label: 'Log a nap',
++          label: 'Nickerchen erfassen',
+           child: Pressable(
+             pressedScale: 0.94,
+             onTap: _addNap,
+@@ -222,7 +222,7 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+                   Icon(Icons.add_rounded, size: 18, color: AppColors.accent),
+                   const SizedBox(width: Sp.x1),
+                   Text(
+-                    'Nap',
++                    'Nickerchen',
+                     style: AppText.label.copyWith(color: AppColors.accent),
+                   ),
+                 ],
+@@ -250,19 +250,20 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+             ] else if (_phase == _Phase.empty)
+               StateCard(
+                 icon: OsIcon.bedtime,
+-                title: 'No sleep detected',
++                title: 'Kein Schlaf erkannt',
+                 message:
+-                    'Wear your strap overnight (and through any naps) and sync '
+-                    'to see each sleep here. You can also log a nap yourself.',
+-                actionLabel: 'Log a nap',
++                    'Trage dein Band über Nacht (und bei Nickerchen) und '
++                    'synchronisiere, um jeden Schlaf hier zu sehen. Du kannst '
++                    'ein Nickerchen auch selbst erfassen.',
++                actionLabel: 'Nickerchen erfassen',
+                 onAction: _addNap,
+               )
+             else if (_phase == _Phase.error)
+               StateCard(
+                 icon: OsIcon.sync,
+-                title: "Couldn't load sleep",
+-                message: _error ?? 'Please try again.',
+-                actionLabel: 'Try again',
++                title: 'Schlaf konnte nicht geladen werden',
++                message: _error ?? 'Bitte versuch es erneut.',
++                actionLabel: 'Erneut versuchen',
+                 onAction: _load,
+               )
+             else
+@@ -298,12 +299,13 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+               crossAxisAlignment: CrossAxisAlignment.start,
+               mainAxisSize: MainAxisSize.min,
+               children: [
+-                const TileHeader('Total sleep'),
++                const TileHeader('Gesamtschlaf'),
+                 const SizedBox(height: Sp.x2),
+                 BigStat(
+                   value: total == null ? '—' : _hm(total),
+                   size: BigStatSize.xl,
+-                  caption: 'need ${_hm(_needMin)} · $n sleep${n == 1 ? '' : 's'}',
++                  caption:
++                      'Bedarf ${_hm(_needMin)} · $n ${n == 1 ? 'Schlafperiode' : 'Schlafperioden'}',
+                 ),
+               ],
+             ),
+@@ -317,7 +319,7 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+             sweepFraction: 0.75,
+             endDot: !t.isNaN,
+             valueText: t.isNaN ? '—' : '${(t * 100).round()}%',
+-            label: 'of need',
++            label: 'vom Bedarf',
+           ),
+         ],
+       ),
+@@ -352,8 +354,10 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+               Expanded(
+                 child: TileHeader(
+                   isMain
+-                      ? 'Main sleep'
+-                      : (p['source'] == 'manual' ? 'Nap · logged' : 'Nap'),
++                      ? 'Hauptschlaf'
++                      : (p['source'] == 'manual'
++                          ? 'Nickerchen · erfasst'
++                          : 'Nickerchen'),
+                   icon: isMain ? OsIcon.sleep : OsIcon.bedtime,
+                   trailing: _beta ? const Tag('est') : null,
+                 ),
+@@ -365,7 +369,7 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+               if (!isMain)
+                 Semantics(
+                   button: true,
+-                  label: 'Remove this nap',
++                  label: 'Dieses Nickerchen entfernen',
+                   child: Pressable(
+                     pressedScale: 0.9,
+                     onTap: () => _removeNap(p),
+@@ -383,16 +387,17 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+               // red "we are sure this is bad" dot, which is a claim.
+               if (conf != null) ConfDot(conf),
+               InfoDot(
+-                title: isMain ? 'Main sleep' : 'Nap',
++                title: isMain ? 'Hauptschlaf' : 'Nickerchen',
+                 body: isMain
+-                    ? 'Stages are a wrist estimate from heart rate + motion '
+-                        '(no EEG).'
+-                    : 'Detected from wrist stillness plus a drop in heart '
+-                        'rate against your awake daytime baseline. Time '
+-                        'asleep excludes brief wake-ups. No stage breakdown: '
+-                        'a short nap has no complete sleep cycle, and daytime '
+-                        'heart rate is too intermittent to split one. The dot '
+-                        'shows detection confidence.',
++                    ? 'Die Phasen sind eine Schätzung am Handgelenk aus '
++                        'Herzfrequenz + Bewegung (kein EEG).'
++                    : 'Erkannt aus Ruhe am Handgelenk plus einem Abfall der '
++                        'Herzfrequenz gegenüber deiner Baseline im Wachzustand. '
++                        'Die Schlafzeit schließt kurze Wachphasen aus. Keine '
++                        'Phasen-Aufschlüsselung: Ein kurzes Nickerchen hat '
++                        'keinen vollständigen Schlafzyklus, und die '
++                        'Herzfrequenz am Tag ist zu lückenhaft, um einen '
++                        'aufzuteilen. Der Punkt zeigt die Erkennungssicherheit.',
+               ),
+             ],
+           ),
+@@ -412,7 +417,7 @@ class _SleepPeriodsScreenState extends State<SleepPeriodsScreen> {
+                 Padding(
+                   padding: const EdgeInsets.only(bottom: 4),
+                   child: StatusChip(
+-                    '${(eff * 100).round()}% efficient',
++                    '${(eff * 100).round()}% effizient',
+                     tone: ChipTone.positive,
+                   ),
+                 ),
+diff --git a/lib/ui/spotcheck/spot_check_screen.dart b/lib/ui/spotcheck/spot_check_screen.dart
+index ad4713e..11d57c7 100644
+--- a/lib/ui/spotcheck/spot_check_screen.dart
++++ b/lib/ui/spotcheck/spot_check_screen.dart
+@@ -81,21 +81,21 @@ class SpotCheckView extends StatelessWidget {
+   @override
+   Widget build(BuildContext context) {
+     return AppScaffold(
+-      title: 'Spot check',
+-      subtitle: 'A 60-second live HRV read',
++      title: 'Spot-Check',
++      subtitle: 'Eine 60-Sekunden-Live-HRV-Messung',
+       onBack: onBack,
+       actions: [
+         InfoDot(
+-          title: 'Spot check',
++          title: 'Spot-Check',
+           body:
+-              'A snapshot of your current state from one minute of live '
+-              'beat-to-beat heart data. Your daily recovery is measured over '
+-              'a full night of sleep and is more reliable for trends.',
++              'Eine Momentaufnahme deines aktuellen Zustands aus einer Minute '
++              'Live-Herzdaten (Schlag zu Schlag). Deine tägliche Erholung wird '
++              'über eine ganze Nacht Schlaf gemessen und ist für Trends verlässlicher.',
+           bullets: const [
+-            'Sit still, band snug, breathe normally.',
+-            'Movement adds noise to the reading.',
++            'Sitz still, Band eng anliegend, atme normal.',
++            'Bewegung verfälscht die Messung.',
+           ],
+-          methodNote: 'RMSSD over ~60 s of live RR intervals',
++          methodNote: 'RMSSD über ~60 s Live-RR-Intervalle',
+         ),
+       ],
+       children: [
+@@ -111,8 +111,8 @@ class SpotCheckView extends StatelessWidget {
+                 const SizedBox(width: Sp.x3),
+                 Expanded(
+                   child: Text(
+-                    'Keep the band snug and sit still. Breathe normally — '
+-                    'movement adds noise to the reading.',
++                    'Halte das Band eng anliegend und sitz still. Atme normal — '
++                    'Bewegung verfälscht die Messung.',
+                     style: AppText.captionMuted,
+                   ),
+                 ),
+@@ -124,7 +124,7 @@ class SpotCheckView extends StatelessWidget {
+         else if (error != null)
+           StateCard(
+             icon: OsIcon.heartRate,
+-            title: "Couldn't get a clean read",
++            title: 'Keine saubere Messung möglich',
+             message: error!,
+           ).dsEnter(index: 1),
+         const SizedBox(height: Sp.x5),
+@@ -132,14 +132,14 @@ class SpotCheckView extends StatelessWidget {
+           FilledButton.icon(
+             onPressed: connected ? onStart : null,
+             icon: const AppIcon(OsIcon.heartRate, size: 18, color: Colors.white),
+-            label: Text(result == null ? 'Start 60-second scan' : 'Scan again'),
++            label: Text(result == null ? '60-Sekunden-Scan starten' : 'Erneut scannen'),
+           ).dsEnter(index: 2)
+         else
+-          OutlinedButton(onPressed: onCancel, child: const Text('Cancel')),
++          OutlinedButton(onPressed: onCancel, child: const Text('Abbrechen')),
+         if (!connected && !active) ...[
+           const SizedBox(height: Sp.x3),
+           Text(
+-            'Connect your band to run a spot check.',
++            'Verbinde dein Band, um einen Spot-Check zu starten.',
+             style: AppText.captionMuted,
+             textAlign: TextAlign.center,
+           ),
+@@ -164,7 +164,7 @@ class SpotCheckView extends StatelessWidget {
+           mainAxisSize: MainAxisSize.min,
+           children: [
+             Text('$remaining', style: AppText.metric.copyWith(fontSize: 44)),
+-            Text('SECONDS',
++            Text('SEKUNDEN',
+                 style: AppText.overline.copyWith(color: AppColors.inkMuted)),
+             if (liveHr != null && liveHr! > 0) ...[
+               const SizedBox(height: Sp.x1),
+@@ -221,11 +221,11 @@ class SpotCheckView extends StatelessWidget {
+       left: [
+         tile('RMSSD', r['rmssd'], 'ms', tone: BentoTone.soft),
+         if (r['pnn50'] != null) tile('pNN50', r['pnn50'], '%'),
+-        if (r['n_beats'] != null) tile('Beats analysed', r['n_beats'], ''),
++        if (r['n_beats'] != null) tile('Analysierte Schläge', r['n_beats'], ''),
+       ],
+       right: [
+         if (r['sdnn'] != null) tile('SDNN', r['sdnn'], 'ms'),
+-        if (r['mean_hr'] != null) tile('Mean HR', r['mean_hr'], 'bpm'),
++        if (r['mean_hr'] != null) tile('Mittlere HF', r['mean_hr'], 'bpm'),
+       ],
+     );
+   }
+diff --git a/lib/ui/timeline/timeline_screen.dart b/lib/ui/timeline/timeline_screen.dart
+index 143fc08..d107516 100644
+--- a/lib/ui/timeline/timeline_screen.dart
++++ b/lib/ui/timeline/timeline_screen.dart
+@@ -248,12 +248,12 @@ class _TimelineContentState extends State<TimelineContent>
+     // Average into ~15-min buckets → clean curves instead of per-minute jitter.
+     _vitals = [
+       if (hr.isNotEmpty)
+-        _Vital('Heart rate', 'bpm', _kHr, hr, 0, _bucketAvg(hr)),
++        _Vital('Herzfrequenz', 'bpm', _kHr, hr, 0, _bucketAvg(hr)),
+       if (hrv.isNotEmpty) _Vital('HRV', 'ms', _kHrv, hrv, 0, _bucketAvg(hrv)),
+       if (resp.isNotEmpty)
+-        _Vital('Resp', 'br/min', _kResp, resp, 0, _bucketAvg(resp)),
++        _Vital('Atmung', 'br/min', _kResp, resp, 0, _bucketAvg(resp)),
+       if (temp.isNotEmpty)
+-        _Vital('Skin temp', 'rel', _kTemp, temp, 1, _bucketAvg(temp)),
++        _Vital('Hauttemperatur', 'rel', _kTemp, temp, 1, _bucketAvg(temp)),
+     ];
+ 
+     final bands = <_Band>[];
+@@ -262,7 +262,7 @@ class _TimelineContentState extends State<TimelineContent>
+         final on = (s['onset_ts'] as num?)?.toDouble();
+         final off = (s['wake_ts'] as num?)?.toDouble();
+         if (on != null && off != null) {
+-          bands.add(_Band('Sleep', DomainAccent.sleep, on, off, OsIcon.sleep));
++          bands.add(_Band('Schlaf', DomainAccent.sleep, on, off, OsIcon.sleep));
+         }
+       }
+     }
+@@ -271,7 +271,7 @@ class _TimelineContentState extends State<TimelineContent>
+         final st = (n['start'] as num?)?.toDouble();
+         final en = (n['end'] as num?)?.toDouble();
+         if (st != null && en != null) {
+-          bands.add(_Band('Nap', AppColors.cool, st, en, OsIcon.sleep));
++          bands.add(_Band('Nickerchen', AppColors.cool, st, en, OsIcon.sleep));
+         }
+       }
+     }
+@@ -322,10 +322,10 @@ class _TimelineContentState extends State<TimelineContent>
+     if (_vitals.isEmpty || _t1 <= _t0) {
+       return const StateCard(
+         icon: OsIcon.heartRate,
+-        title: 'No timeline yet',
++        title: 'Noch keine Timeline',
+         message:
+-            'Wear the strap through the day and your merged vitals timeline '
+-            'will appear here.',
++            'Trage das Band über den Tag und deine kombinierte '
++            'Vitalwerte-Timeline erscheint hier.',
+       );
+     }
+     return Column(
+@@ -415,16 +415,18 @@ class _TimelineContentState extends State<TimelineContent>
+             child: TileHeader(
+               '${active.label} · ${active.unit}',
+               trailing: const InfoDot(
+-                title: 'Every vital, one chart',
++                title: 'Alle Vitalwerte, ein Diagramm',
+                 body:
+-                    'All vitals are drawn together on one time axis, each '
+-                    'normalized to its own range. The axis shows the selected '
+-                    'vital in its real units — tap a chip to switch. Scrub '
+-                    'the chart to read every vital at a moment.',
++                    'Alle Vitalwerte liegen zusammen auf einer Zeitachse, '
++                    'jeder auf seinen eigenen Bereich normalisiert. Die Achse '
++                    'zeigt den gewählten Wert in echten Einheiten — tippe '
++                    'einen Chip zum Wechseln. Fahre über das Diagramm, um '
++                    'jeden Wert zu einem Zeitpunkt abzulesen.',
+                 methodNote:
+-                    'Only continuously-recorded vitals are shown. Daytime HRV '
+-                    'and respiration are movement-confounded; skin temp is a '
+-                    'relative trend, not °C.',
++                    'Nur kontinuierlich aufgezeichnete Vitalwerte werden '
++                    'gezeigt. HRV und Atmung sind tagsüber durch Bewegung '
++                    'verfälscht; die Hauttemperatur ist ein relativer Trend, '
++                    'kein °C-Wert.',
+               ),
+             ),
+           ),
+@@ -556,7 +558,7 @@ class _TimelineContentState extends State<TimelineContent>
+           BigStat(
+             value: p.v.toStringAsFixed(act.decimals),
+             unit: act.unit,
+-            caption: 'at ${_clock(p.t)}',
++            caption: 'um ${_clock(p.t)}',
+             size: BigStatSize.md,
+           ),
+         ],
+@@ -564,8 +566,8 @@ class _TimelineContentState extends State<TimelineContent>
+     );
+     return BentoColumns(
+       entrance: false,
+-      left: [tile('Peak', pk)],
+-      right: [tile('Low', lw)],
++      left: [tile('Spitze', pk)],
++      right: [tile('Tief', lw)],
+     );
+   }
+ 
+@@ -580,7 +582,7 @@ class _TimelineContentState extends State<TimelineContent>
+           crossAxisAlignment: CrossAxisAlignment.stretch,
+           mainAxisSize: MainAxisSize.min,
+           children: [
+-            const TileHeader('Events'),
++            const TileHeader('Ereignisse'),
+             const SizedBox(height: Sp.x1),
+             for (var i = 0; i < _bands.length; i++)
+               ListRow(

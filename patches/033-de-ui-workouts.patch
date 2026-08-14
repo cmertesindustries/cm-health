@@ -1,0 +1,1790 @@
+diff --git a/lib/ui/activity/live_session_screen.dart b/lib/ui/activity/live_session_screen.dart
+index 6412ee9..d8dca68 100644
+--- a/lib/ui/activity/live_session_screen.dart
++++ b/lib/ui/activity/live_session_screen.dart
+@@ -49,12 +49,12 @@ class _ZoneMeta {
+ 
+ /// Zone labels. Colours are NOT baked in here — see [_zones].
+ const List<(String, String)> _zoneNames = [
+-  ('Z0', 'Resting'),
+-  ('Z1', 'Warm-up'),
+-  ('Z2', 'Fat burn'),
+-  ('Z3', 'Aerobic'),
+-  ('Z4', 'Threshold'),
+-  ('Z5', 'Max effort'),
++  ('Z0', 'Ruhe'),
++  ('Z1', 'Aufwärmen'),
++  ('Z2', 'Fettverbrennung'),
++  ('Z3', 'Aerob'),
++  ('Z4', 'Schwelle'),
++  ('Z5', 'Maximum'),
+ ];
+ 
+ /// Zone metadata for the live session screen.
+@@ -86,17 +86,17 @@ const _zonePct = [0.0, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]; // lower bound of z0..z5 t
+ 
+ // Playful + a little funny lines, by zone bucket.
+ const Map<int, List<String>> _lines = {
+-  0: ["Heart's still sipping coffee.", "Easing in — no sprinting cold.", "Loosening the engine…"],
+-  1: ["Warm-up mode. We build to it.", "Blood's moving. Good start.", "Gentle. The fun comes later."],
+-  2: ["Cruising — the fat-burn sweet spot.", "Your mitochondria say thanks.", "Zone 2: the long-game zone."],
+-  3: ["Engine's humming. Hold this.", "Aerobic and honest. Keep rolling.", "This is the work. Stay here."],
+-  4: ["Threshold — this is where fitness is built.", "Breathe and hold. You've got this.", "The good kind of uncomfortable."],
+-  5: ["MAX. Brief and brutal — respect.", "Full send. Your heart filed a complaint.", "Don't quit. You're almost through it."],
++  0: ["Dein Herz trinkt noch Kaffee.", "Locker rein — kein Kaltstart-Sprint.", "Der Motor wird warmgefahren…"],
++  1: ["Aufwärmmodus. Wir steigern uns.", "Das Blut zirkuliert. Guter Start.", "Sanft. Der Spaß kommt später."],
++  2: ["Cruisen — der Sweet Spot der Fettverbrennung.", "Deine Mitochondrien sagen danke.", "Zone 2: die Zone fürs lange Spiel."],
++  3: ["Der Motor brummt. Halte das.", "Aerob und ehrlich. Bleib dran.", "Das ist die Arbeit. Bleib hier."],
++  4: ["Schwelle — hier entsteht Fitness.", "Atmen und halten. Du schaffst das.", "Die gute Art von unangenehm."],
++  5: ["MAX. Kurz und brutal — Respekt.", "Vollgas. Dein Herz hat Beschwerde eingelegt.", "Nicht aufgeben. Du bist fast durch."],
+ };
+ const List<String> _droppingLines = [
+-  "HR's easing down — recover, or pick it back up?",
+-  "Catching your breath. Smart.",
+-  "Coasting. Ready when you are.",
++  "Die HF sinkt — erholen oder wieder hochziehen?",
++  "Luft holen. Klug.",
++  "Ausrollen. Bereit, wenn du es bist.",
+ ];
+ 
+ class _LiveSessionScreenState extends State<LiveSessionScreen>
+@@ -237,19 +237,19 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
+ 
+     // Milestones — time / calories / new max HR.
+     final mins = w.elapsed.inMinutes;
+-    if (mins > 0 && mins % 5 == 0) _milestone('t$mins', '$mins MINUTES', "Locked in. Keep going.", AppColors.good);
++    if (mins > 0 && mins % 5 == 0) _milestone('t$mins', '$mins MINUTEN', "Voll dabei. Weiter so.", AppColors.good);
+     // No kcal milestones for an unanchored profile — celebrating a number
+     // we refuse to display would be the fabrication back by another door.
+     final kcal = w.caloriesOrNull;
+     if (kcal != null) {
+       final kcalStep = (kcal ~/ 100) * 100;
+-      if (kcalStep >= 100) _milestone('k$kcalStep', '$kcalStep KCAL', "Burning clean.", AppColors.coral);
++      if (kcalStep >= 100) _milestone('k$kcalStep', '$kcalStep KCAL', "Sauber verbrannt.", AppColors.coral);
+     }
+     // Announce on a new SMOOTHED peak (not raw instantaneous hr), so a transient
+     // spike can't fire a spurious "NEW MAX"; the dedup key gates one per value.
+     if (w.elapsed.inSeconds > 90 && w.maxHrSeen > 0 && w.maxHrSeen >= (_maxHr * 0.8)) {
+-      _milestone('mhr${w.maxHrSeen}', 'NEW MAX · ${w.maxHrSeen}',
+-          "Highest your heart's gone today.", AppColors.coralDeep);
++      _milestone('mhr${w.maxHrSeen}', 'NEUES MAX · ${w.maxHrSeen}',
++          "So hoch war dein Herz heute noch nie.", AppColors.coralDeep);
+     }
+ 
+     // Rotate the playful line ~every 11s (or on zone change).
+@@ -418,7 +418,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
+                         redStreak: _redStreak,
+                         line: _line,
+                         almostText: almost
+-                            ? '$gapBpm bpm to ${_zones[zone + 1].label} — push'
++                            ? 'Noch $gapBpm bpm bis ${_zones[zone + 1].label} — gib Gas'
+                             : null,
+                         almostColor:
+                             zone < 5 ? _zones[zone + 1].color : z.color,
+@@ -1042,7 +1042,7 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
+       0.3,
+       Column(
+         children: [
+-          Text('$label complete', style: AppText.h1),
++          Text('$label abgeschlossen', style: AppText.h1),
+           const SizedBox(height: Sp.x1),
+           Text(_dur(s.duration), style: AppText.bodySoft),
+         ],
+@@ -1072,7 +1072,7 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
+                         ? '—'
+                         : (strain * _seg(0.0, 0.5)).toStringAsFixed(1),
+                     style: AppText.display),
+-                Text('STRAIN', style: AppText.overline),
++                Text('BELASTUNG', style: AppText.overline),
+               ],
+             ),
+           ),
+@@ -1095,11 +1095,11 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
+             offset: Offset(0, 14 * (1 - p)),
+             child: Row(
+               children: [
+-                stat(peak > 0 ? '${(peak * p).round()}' : '—', 'PEAK BPM'),
+-                stat(avg != null ? '${(avg * p).round()}' : '—', 'AVG BPM'),
++                stat(peak > 0 ? '${(peak * p).round()}' : '—', 'MAX BPM'),
++                stat(avg != null ? '${(avg * p).round()}' : '—', 'Ø BPM'),
+                 stat(kcal != null ? '${(kcal * p).round()}' : '—', 'KCAL'),
+                 if (steps != null && steps > 0)
+-                  stat('${(steps * p).round()}', 'STEPS'),
++                  stat('${(steps * p).round()}', 'SCHRITTE'),
+               ],
+             ),
+           ),
+@@ -1119,7 +1119,7 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.start,
+       children: [
+-        Text('TIME IN ZONES', style: AppText.overline),
++        Text('ZEIT IN ZONEN', style: AppText.overline),
+         const SizedBox(height: Sp.x3),
+         ClipRect(
+           child: Align(
+@@ -1190,7 +1190,7 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.start,
+       children: [
+-        Text('HEART-RATE RECOVERY', style: AppText.overline),
++        Text('HERZFREQUENZ-ERHOLUNG', style: AppText.overline),
+         const SizedBox(height: Sp.x3),
+         SizedBox(
+           height: 70,
+@@ -1247,17 +1247,17 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
+         if (_prWorkout)
+           const MedalCard(
+             medal: 'PR',
+-            overline: 'Personal record',
+-            title: 'Hardest workout yet',
+-            subtitle: 'Your highest strain on record',
++            overline: 'Persönlicher Rekord',
++            title: 'Härtestes Workout bisher',
++            subtitle: 'Deine höchste Belastung bisher',
+           ).dsCelebrate(),
+         if (_prWorkout && _prSteps) const SizedBox(height: Sp.x3),
+         if (_prSteps)
+           const MedalCard(
+             medal: 'PR',
+-            overline: 'Personal record',
+-            title: 'Most steps in a workout',
+-            subtitle: 'Your biggest step count on record',
++            overline: 'Persönlicher Rekord',
++            title: 'Meiste Schritte in einem Workout',
++            subtitle: 'Deine höchste Schrittzahl bisher',
+           ).dsCelebrate(),
+       ],
+     );
+@@ -1290,17 +1290,17 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
+         ? null
+         : speeds.reduce((a, b) => a + b) / speeds.length;
+     final third = isRide && avgSpeed != null
+-        ? (units.speed(avgSpeed), 'AVG SPEED')
+-        : (paceText, 'AVG PACE');
++        ? (units.speed(avgSpeed), 'Ø GESCHW.')
++        : (paceText, 'Ø PACE');
+     return _reveals(
+       0.1,
+       0.45,
+       Row(
+         children: [
+           Expanded(
+-            child: _FinishStat(units.distance(route.distanceMeters), 'DISTANCE'),
++            child: _FinishStat(units.distance(route.distanceMeters), 'DISTANZ'),
+           ),
+-          Expanded(child: _FinishStat(_dur(moving), 'MOVING')),
++          Expanded(child: _FinishStat(_dur(moving), 'IN BEWEGUNG')),
+           Expanded(child: _FinishStat(third.$1, third.$2)),
+         ],
+       ),
+@@ -1339,7 +1339,7 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
+             children: [
+               AppIcon(OsIcon.activity, size: 22, color: AppColors.inkMuted),
+               const SizedBox(height: Sp.x2),
+-              Text('No route recorded', style: AppText.captionMuted),
++              Text('Keine Route aufgezeichnet', style: AppText.captionMuted),
+             ],
+           ),
+         ),
+@@ -1363,7 +1363,7 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
+             child: FilledButton.icon(
+               onPressed: _share,
+               icon: const Icon(Icons.ios_share_rounded, size: 19),
+-              label: const Text('Share workout'),
++              label: const Text('Workout teilen'),
+             ),
+           ),
+           const SizedBox(height: Sp.x3),
+@@ -1372,7 +1372,7 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
+               themedRoute((_) => WorkoutDetailScreen(id: widget.id),
+                   name: 'WorkoutDetailScreen'),
+             ),
+-            child: const Text('Full breakdown'),
++            child: const Text('Komplette Auswertung'),
+           ),
+         ],
+       ),
+@@ -1603,7 +1603,7 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
+   bool _userPanned = false; // manual pan pauses auto-follow until re-centred
+   int _followedCount = 0; // last path length the camera followed to
+ 
+-  static const _zoneLabels = ['Rest', 'Warm', 'Fat', 'Aero', 'Thr', 'Max'];
++  static const _zoneLabels = ['Ruhe', 'Warm', 'Fett', 'Aero', 'Schw', 'Max'];
+ 
+   @override
+   void dispose() {
+@@ -1658,13 +1658,13 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
+   /// or miss, never worked" — a stall with no error just sat on "Waiting for
+   /// GPS…" forever with zero explanation).
+   String _statusText(bool empty, bool stalled, String? err) {
+-    if (err != null) return 'GPS signal lost — check that location is on';
++    if (err != null) return 'GPS-Signal verloren — prüfe, ob der Standort an ist';
+     if (stalled) {
+       return empty
+-          ? 'Still waiting for a GPS fix — move to open sky if indoors'
+-          : 'GPS signal weak — your route may show a gap here';
++          ? 'Warte noch auf ein GPS-Signal — geh unter freien Himmel, falls du drinnen bist'
++          : 'GPS-Signal schwach — deine Route kann hier eine Lücke haben';
+     }
+-    return 'Waiting for GPS…';
++    return 'Warte auf GPS…';
+   }
+ 
+   String _fmtDuration(Duration d) {
+@@ -1838,7 +1838,7 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
+                         Expanded(
+                           child: _RouteLiveStat(
+                             value: units.distance(widget.distanceMeters),
+-                            label: 'distance',
++                            label: 'Distanz',
+                             primary: true,
+                           ),
+                         ),
+@@ -1852,7 +1852,7 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
+                         Expanded(
+                           child: _RouteLiveStat(
+                             value: _fmtDuration(widget.elapsed),
+-                            label: 'duration',
++                            label: 'Dauer',
+                           ),
+                         ),
+                         Expanded(
+@@ -1861,7 +1861,7 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
+                             // speed reading; falls back to the run's average
+                             // pace so the field is never blank.
+                             value: livePace == '—' ? avgPace : livePace,
+-                            label: 'pace',
++                            label: 'Pace',
+                             valueColor: AppColors.coral,
+                           ),
+                         ),
+@@ -1964,7 +1964,7 @@ class _LiveHrPill extends StatelessWidget {
+             ),
+           ),
+           Text(
+-            has ? zoneLabel.toUpperCase() : 'NO BPM',
++            has ? zoneLabel.toUpperCase() : 'KEIN BPM',
+             style: AppText.overline.copyWith(
+               color: has ? zoneColor : AppColors.onNightMuted,
+               fontSize: 8,
+@@ -2083,7 +2083,7 @@ class _HeroCore extends StatelessWidget {
+                       ),
+                     ),
+                     Text(
+-                      'DURATION',
++                      'DAUER',
+                       style: AppText.overline.copyWith(
+                         color: AppColors.onNightMuted,
+                         fontSize: 9,
+@@ -2095,7 +2095,7 @@ class _HeroCore extends StatelessWidget {
+                       _LivePill(
+                         icon: AppIcon(OsIcon.calories,
+                             size: 14, color: AppColors.coral),
+-                        text: '${fmt(redStreak)} in the red',
++                        text: '${fmt(redStreak)} im roten Bereich',
+                         tint: AppColors.coral,
+                       ),
+                     ],
+@@ -2327,8 +2327,8 @@ class _SessionStateChip extends StatelessWidget {
+         icon: const Icon(Icons.location_off_outlined,
+             size: 15, color: Colors.white60),
+         text: locationIssue == GpsPermissionStatus.serviceOff
+-            ? 'Location off — turn it on'
+-            : 'Location off — allow it',
++            ? 'Standort aus — schalte ihn ein'
++            : 'Standort aus — erlaube ihn',
+         tint: AppColors.warn,
+       ),
+     );
+@@ -2364,13 +2364,13 @@ class _ViewToggle extends StatelessWidget {
+           children: [
+             _seg(
+               icon: Icons.favorite_rounded,
+-              label: 'Heart',
++              label: 'Herz',
+               selected: !showingMap,
+               onTap: () => onChanged(false),
+             ),
+             _seg(
+               icon: Icons.map_rounded,
+-              label: 'Map',
++              label: 'Karte',
+               selected: showingMap,
+               onTap: () => onChanged(true),
+             ),
+@@ -2520,7 +2520,7 @@ class _SessionSheet extends StatelessWidget {
+                           ? _fmtClock(elapsed)
+                           // A dash, never a 0 — same contract as strain below.
+                           : (workout.caloriesOrNull?.toString() ?? '—'),
+-                      isRoute ? 'TIME' : 'KCAL',
++                      isRoute ? 'ZEIT' : 'KCAL',
+                     ),
+                   ),
+                   Expanded(
+@@ -2530,7 +2530,7 @@ class _SessionSheet extends StatelessWidget {
+                           // Null until the profile carries the anchors
+                           // Banister needs — a dash, never a 0.0.
+                           : (workout.strain?.toStringAsFixed(1) ?? '—'),
+-                      isRoute ? 'PACE' : 'STRAIN',
++                      isRoute ? 'PACE' : 'BELASTUNG',
+                     ),
+                   ),
+                   Expanded(
+@@ -2538,7 +2538,7 @@ class _SessionSheet extends StatelessWidget {
+                       isRoute
+                           ? (workout.caloriesOrNull?.toString() ?? '—')
+                           : (steps?.toString() ?? '—'),
+-                      isRoute ? 'KCAL' : 'STEPS',
++                      isRoute ? 'KCAL' : 'SCHRITTE',
+                     ),
+                   ),
+                 ],
+@@ -2649,7 +2649,7 @@ class _HoldToFinish extends StatelessWidget {
+   @override
+   Widget build(BuildContext context) => Semantics(
+         button: true,
+-        label: 'Hold to finish workout',
++        label: 'Halten, um das Workout zu beenden',
+         child: GestureDetector(
+           onLongPressStart: (_) {
+             holdController.forward();
+@@ -2706,7 +2706,7 @@ class _HoldToFinish extends StatelessWidget {
+                                   AppColors.onNight, val)),
+                           const SizedBox(width: Sp.x3),
+                           Text(
+-                            ending ? 'FINISHING…' : 'HOLD TO FINISH',
++                            ending ? 'BEENDEN…' : 'HALTEN ZUM BEENDEN',
+                             style: AppText.label.copyWith(
+                               color: Color.lerp(
+                                   AppColors.onNightSoft, AppColors.onNight, val),
+diff --git a/lib/ui/activity/strain_detail_screen.dart b/lib/ui/activity/strain_detail_screen.dart
+index e62be7e..883fdf7 100644
+--- a/lib/ui/activity/strain_detail_screen.dart
++++ b/lib/ui/activity/strain_detail_screen.dart
+@@ -75,7 +75,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+     if (api == null) {
+       setState(() {
+         _phase = _Phase.error;
+-        _error = 'Not signed in.';
++        _error = 'Nicht angemeldet.';
+       });
+       return;
+     }
+@@ -169,7 +169,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+         _SessionRange(
+           start,
+           end,
+-          (s['type'] as String?) ?? 'Autodetected workout',
++          (s['type'] as String?) ?? 'Automatisch erkanntes Workout',
+           (s['source'] as String?) ?? 'auto',
+         ),
+       );
+@@ -182,16 +182,16 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+   static const _months = [
+     'Jan',
+     'Feb',
+-    'Mar',
++    'Mär',
+     'Apr',
+-    'May',
++    'Mai',
+     'Jun',
+     'Jul',
+     'Aug',
+     'Sep',
+-    'Oct',
++    'Okt',
+     'Nov',
+-    'Dec',
++    'Dez',
+   ];
+ 
+   /// 'YYYY-MM-DD' → 'Mon 12, 2026' (falls back to the raw string).
+@@ -204,7 +204,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+     if (y == null || m == null || d == null || m < 1 || m > 12) {
+       return widget.date;
+     }
+-    return '${_months[m - 1]} $d, $y';
++    return '$d. ${_months[m - 1]} $y';
+   }
+ 
+   String _mins(num? minutes) {
+@@ -263,9 +263,10 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+       return [
+         _stateCard(
+           OsIcon.bodyStrain,
+-          'No strain for this day',
+-          'Wear your strap and sync to capture all-day heart rate. Strain '
+-              'appears once there is data to score.',
++          'Keine Belastung für diesen Tag',
++          'Trage dein Band und synchronisiere, um die Herzfrequenz über den '
++              'ganzen Tag zu erfassen. Belastung erscheint, sobald es Daten '
++              'zum Auswerten gibt.',
+         ),
+       ];
+     }
+@@ -273,8 +274,8 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+       return [
+         _stateCard(
+           OsIcon.sync,
+-          "Couldn't load strain",
+-          _error ?? 'Please try again.',
++          'Belastung konnte nicht geladen werden',
++          _error ?? 'Versuch es bitte noch mal.',
+         ),
+       ];
+     }
+@@ -320,7 +321,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+             crossAxisAlignment: CrossAxisAlignment.start,
+             mainAxisSize: MainAxisSize.min,
+             children: [
+-              Text('Strain', style: AppText.h1),
++              Text('Belastung', style: AppText.h1),
+               const SizedBox(height: 2),
+               Text(_prettyDate(), style: AppText.caption),
+             ],
+@@ -351,7 +352,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+       _hero(),
+       const SizedBox(height: Sp.x4),
+       if (hasLoad) ...[
+-        const SectionHeader('Training load'),
++        const SectionHeader('Trainingslast'),
+         _loadCard(load, fitness, effort),
+         const SizedBox(height: Sp.x4),
+       ],
+@@ -365,7 +366,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+       ..._workouts(),
+       if (drivers.isNotEmpty) ...[
+         const SizedBox(height: Sp.x4),
+-        const SectionHeader('What affected this'),
++        const SectionHeader('Was sich ausgewirkt hat'),
+         // Display-only (no navigation): default card padding gives proper inset.
+         ProCard(
+           child: Column(
+@@ -408,11 +409,11 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+         TrendMetricRow(
+           icon: OsIcon.bodyStrain,
+           accent: AppColors.coral,
+-          label: 'Training load (ACWR)',
++          label: 'Trainingslast (ACWR)',
+           info: infoFor('load'),
+           value: acwr.toStringAsFixed(2),
+           metric: 'acwr',
+-          trendTitle: 'Training load (ACWR)',
++          trendTitle: 'Trainingslast (ACWR)',
+         ),
+       );
+     }
+@@ -421,11 +422,11 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+         TrendMetricRow(
+           icon: OsIcon.activity,
+           accent: AppColors.warn,
+-          label: 'Monotony',
++          label: 'Monotonie',
+           info: infoFor('monotony'),
+           value: monotony.toStringAsFixed(2),
+           metric: 'monotony',
+-          trendTitle: 'Training monotony',
++          trendTitle: 'Trainingsmonotonie',
+         ),
+       );
+     }
+@@ -455,14 +456,15 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+                       Text(
+-                        'Building your fitness picture',
++                        'Dein Fitnessbild entsteht',
+                         style: AppText.label,
+                       ),
+                       const SizedBox(height: 2),
+                       Text(
+-                        'VO₂max needs a hard, near-max effort to estimate; '
+-                        'fitness, fatigue & form build over ~2–3 weeks of '
+-                        'training. Keep wearing it and training as usual.',
++                        'VO₂max braucht zur Schätzung eine harte, fast '
++                        'maximale Belastung; Fitness, Ermüdung & Form entstehen '
++                        'über ~2–3 Wochen Training. Trag das Band weiter und '
++                        'trainiere wie gewohnt.',
+                         style: AppText.captionMuted,
+                       ),
+                     ],
+@@ -519,7 +521,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+               children: [
+                 const OsAppIcon(OsIcon.bodyStrain, size: 28),
+                 const SizedBox(width: Sp.x2),
+-                Text('Acute:chronic load', style: AppText.label),
++                Text('Akute:chronische Last', style: AppText.label),
+                 const Spacer(),
+                 Text(
+                   acwr.toStringAsFixed(2),
+@@ -533,11 +535,11 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+               const SizedBox(height: Sp.x3),
+           ],
+           if (fitness != null)
+-            DetailRow(label: 'Fitness trend', value: fitness),
++            DetailRow(label: 'Fitnesstrend', value: fitness),
+           // Edwards zone-weighted "effort" (0–100) — finer-grained intensity read
+           // than the 0–21 headline, over the per-second wake HR.
+           if (effort != null)
+-            DetailRow(label: 'Effort (0–100)', value: '${effort.round()}'),
++            DetailRow(label: 'Anstrengung (0–100)', value: '${effort.round()}'),
+         ],
+       ),
+     );
+@@ -559,7 +561,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+                   children: [
+                     const OsAppIcon(OsIcon.bodyStrain, size: 34),
+                     const SizedBox(width: Sp.x2),
+-                    Text('DAY STRAIN', style: AppText.overline),
++                    Text('TAGESBELASTUNG', style: AppText.overline),
+                   ],
+                 ),
+                 const SizedBox(height: Sp.x4),
+@@ -574,7 +576,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+                     const SizedBox(width: Sp.x2),
+                     Padding(
+                       padding: const EdgeInsets.only(bottom: 4),
+-                      child: Text('of 21', style: AppText.caption),
++                      child: Text('von 21', style: AppText.caption),
+                     ),
+                   ],
+                 ),
+@@ -617,7 +619,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+       child: Column(
+         crossAxisAlignment: CrossAxisAlignment.start,
+         children: [
+-          const SectionHeader('Strain build'),
++          const SectionHeader('Belastungsaufbau'),
+           TimeSeriesChart(
+             points: curve,
+             color: AppColors.coral,
+@@ -632,11 +634,11 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+               ).toLocal();
+               final mm = dt.minute.toString().padLeft(2, '0');
+               final zone = _zoneAt(p.x, timeline);
+-              final workout = _hasWorkoutAt(p.x, sessions) ? 'yes' : 'no';
++              final workout = _hasWorkoutAt(p.x, sessions) ? 'ja' : 'nein';
+               return '${dt.hour}:$mm\n'
+-                  'strain ${p.y.toStringAsFixed(1)}\n'
+-                  'zone Z$zone\n'
+-                  'workout $workout';
++                  'Belastung ${p.y.toStringAsFixed(1)}\n'
++                  'Zone Z$zone\n'
++                  'Workout $workout';
+             },
+             bands: const [
+               HorizontalBand(0, 5, Color(0x102B3C50)),
+@@ -686,7 +688,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+       child: Column(
+         crossAxisAlignment: CrossAxisAlignment.start,
+         children: [
+-          const SectionHeader('HR zones'),
++          const SectionHeader('HF-Zonen'),
+           SegmentBar(zones, palette, height: 14),
+           const SizedBox(height: Sp.x4),
+           for (int i = 0; i < zones.length; i++) ...[
+@@ -744,7 +746,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+       children: [
+         Expanded(child: _hrStat('Max', _num(hr['max']))),
+         const SizedBox(width: Sp.x3),
+-        Expanded(child: _hrStat('Avg', _num(hr['avg']))),
++        Expanded(child: _hrStat('Ø', _num(hr['avg']))),
+         const SizedBox(width: Sp.x3),
+         Expanded(child: _hrStat('Min', _num(hr['min']))),
+       ],
+@@ -810,8 +812,8 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+               const SizedBox(width: Sp.x4),
+               Expanded(
+                 child: Text(
+-                  'No workouts auto-detected — strain still accrues from all-day '
+-                  'heart rate.',
++                  'Keine Workouts automatisch erkannt — Belastung sammelt '
++                  'sich trotzdem aus der Herzfrequenz über den ganzen Tag.',
+                   style: AppText.bodySoft,
+                 ),
+               ),
+@@ -878,11 +880,11 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+           Row(
+             children: [
+               _sessionStat(
+-                'Calories',
++                'Kalorien',
+                 calories == null ? '—' : '${calories.round()}',
+               ),
+-              _sessionStat('AVG HR', avgHr == null ? '—' : '${avgHr.round()}'),
+-              _sessionStat('MAX HR', maxHr == null ? '—' : '${maxHr.round()}'),
++              _sessionStat('Ø HF', avgHr == null ? '—' : '${avgHr.round()}'),
++              _sessionStat('MAX HF', maxHr == null ? '—' : '${maxHr.round()}'),
+             ],
+           ),
+         ],
+@@ -932,7 +934,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
+           const SizedBox(height: Sp.x2),
+           Text(message, style: AppText.bodySoft, textAlign: TextAlign.center),
+           const SizedBox(height: Sp.x5),
+-          OutlinedButton(onPressed: _load, child: const Text('Try again')),
++          OutlinedButton(onPressed: _load, child: const Text('Erneut versuchen')),
+         ],
+       ),
+     );
+@@ -1098,17 +1100,17 @@ class _FitnessModelCardState extends State<_FitnessModelCard> {
+       child: Column(
+         crossAxisAlignment: CrossAxisAlignment.start,
+         children: [
+-          Text('Fitness · Fatigue · Form', style: AppText.label),
++          Text('Fitness · Ermüdung · Form', style: AppText.label),
+           const SizedBox(height: Sp.x1),
+           Text(
+-            'Built-up fitness vs recent fatigue. Form = fitness − fatigue (freshness).',
++            'Aufgebaute Fitness vs. aktuelle Ermüdung. Form = Fitness − Ermüdung (Frische).',
+             style: AppText.captionMuted,
+           ),
+           const SizedBox(height: Sp.x3),
+           Row(
+             children: [
+               _stat('FITNESS', widget.fitness, AppColors.coral),
+-              _stat('FATIGUE', widget.fatigue, AppColors.loadDetraining),
++              _stat('ERMÜDUNG', widget.fatigue, AppColors.loadDetraining),
+               _stat(
+                 'FORM',
+                 widget.form,
+@@ -1129,7 +1131,7 @@ class _FitnessModelCardState extends State<_FitnessModelCard> {
+                 _legendDot(AppColors.coral),
+                 Text(' Fitness   ', style: AppText.caption),
+                 _legendDot(AppColors.loadDetraining),
+-                Text(' Fatigue', style: AppText.caption),
++                Text(' Ermüdung', style: AppText.caption),
+               ],
+             ),
+           ],
+diff --git a/lib/ui/activity/workout_share_card.dart b/lib/ui/activity/workout_share_card.dart
+index b82732f..2afcf83 100644
+--- a/lib/ui/activity/workout_share_card.dart
++++ b/lib/ui/activity/workout_share_card.dart
+@@ -48,7 +48,7 @@ import '../kit/route_map.dart';
+ /// portrait card loses the route.
+ enum ShareFormat {
+   /// 4:5 — the tallest a feed post can be without being cropped.
+-  feed('Post', 4 / 5),
++  feed('Beitrag', 4 / 5),
+ 
+   /// 9:16 — full-bleed story.
+   story('Story', 9 / 16);
+@@ -231,7 +231,7 @@ class WorkoutShareCard extends StatelessWidget {
+                       AppIcon(OsIcon.activity, size: 13, color: data.accent),
+                       const SizedBox(width: Sp.x2),
+                       Text(
+-                        'OpenStrap',
++                        'CM Health',
+                         style: AppText.caption.copyWith(
+                           color: AppColors.onNightMuted,
+                           fontWeight: FontWeight.w700,
+@@ -398,7 +398,7 @@ class _WorkoutSharePreviewScreenState extends State<WorkoutSharePreviewScreen> {
+       debugPrint('[share] failed: $e\n$st');
+       if (!mounted) return;
+       ScaffoldMessenger.of(context).showSnackBar(
+-        const SnackBar(content: Text("Couldn't prepare the image — try again")),
++        const SnackBar(content: Text('Bild konnte nicht erstellt werden — versuch es noch mal')),
+       );
+     } finally {
+       if (mounted) setState(() => _sharing = false);
+@@ -422,10 +422,10 @@ class _WorkoutSharePreviewScreenState extends State<WorkoutSharePreviewScreen> {
+                       onPressed: () => Navigator.of(context).maybePop(),
+                       icon: Icon(Icons.close_rounded,
+                           color: AppColors.onNightSoft),
+-                      tooltip: 'Close',
++                      tooltip: 'Schließen',
+                     ),
+                     const Spacer(),
+-                    Text('Share workout',
++                    Text('Workout teilen',
+                         style: AppText.label
+                             .copyWith(color: AppColors.onNight)),
+                     const Spacer(),
+@@ -470,7 +470,7 @@ class _WorkoutSharePreviewScreenState extends State<WorkoutSharePreviewScreen> {
+                                     strokeWidth: 2, color: Colors.white),
+                               )
+                             : const Icon(Icons.ios_share_rounded, size: 19),
+-                        label: Text(_sharing ? 'Preparing…' : 'Share'),
++                        label: Text(_sharing ? 'Wird vorbereitet…' : 'Teilen'),
+                       ),
+                     ),
+                   ],
+@@ -577,18 +577,18 @@ WorkoutShareData buildWorkoutShareData({
+     heroValue = parts.first;
+     heroUnit = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+     stats = [
+-      (_shareDuration(duration), 'Time'),
++      (_shareDuration(duration), 'Zeit'),
+       // Moving pace, like everywhere else — see the note in _GpsControlPanel.
+       (units.pace(route.distanceMeters, route.movingSec), 'Pace'),
+-      (strainText, 'Strain'),
++      (strainText, 'Belastung'),
+     ];
+   } else {
+     heroValue = _shareDuration(duration);
+     heroUnit = '';
+     stats = [
+-      (strainText, 'Strain'),
++      (strainText, 'Belastung'),
+       (calories?.toString() ?? '—', 'Kcal'),
+-      (avgHr != null && avgHr > 0 ? '$avgHr' : '—', 'Avg bpm'),
++      (avgHr != null && avgHr > 0 ? '$avgHr' : '—', 'Ø bpm'),
+     ];
+   }
+ 
+@@ -614,9 +614,9 @@ String _shareDuration(Duration d) {
+ }
+ 
+ const _shareMonths = [
+-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++  'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', //
++  'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+ ];
+ 
+ String _shareDate(DateTime t) =>
+-    '${t.day} ${_shareMonths[t.month - 1]} ${t.year}';
++    '${t.day}. ${_shareMonths[t.month - 1]} ${t.year}';
+diff --git a/lib/ui/workouts/calorie_heatmap.dart b/lib/ui/workouts/calorie_heatmap.dart
+index dddc187..a17c3a9 100644
+--- a/lib/ui/workouts/calorie_heatmap.dart
++++ b/lib/ui/workouts/calorie_heatmap.dart
+@@ -277,14 +277,14 @@ List<HeatDay> buildHeatDays(
+ /// to the right edge stays fully on the card.
+ const double _monthLabelWidth = 24.0;
+ 
+-const _dow = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
++const _dow = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+ const _mon = [
+-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++  'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++  'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+ ];
+ 
+ String _readoutDate(DateTime d) =>
+-    '${_dow[d.weekday - 1]} ${d.day} ${_mon[d.month - 1]}';
++    '${_dow[d.weekday - 1]} ${d.day}. ${_mon[d.month - 1]}';
+ 
+ String _cellKey(DateTime d) => 'heat-${d.year.toString().padLeft(4, '0')}'
+     '-${d.month.toString().padLeft(2, '0')}'
+@@ -402,7 +402,7 @@ class _CalorieHeatmapCardState extends State<CalorieHeatmapCard>
+     // because the whole point is serving spans other than 13 — "1 weeks" would
+     // be the derivation announcing itself.
+     final weeks = (widget.days.length / 7).ceil();
+-    final weekLabel = weeks == 1 ? '1 week' : '$weeks weeks';
++    final weekLabel = weeks == 1 ? '1 Woche' : '$weeks Wochen';
+ 
+     // Resolved by lookup rather than firstWhere: the window slides forward as
+     // days pass and on a refresh that crosses midnight the selected date can
+@@ -429,15 +429,16 @@ class _CalorieHeatmapCardState extends State<CalorieHeatmapCard>
+           children: [
+             Row(
+               children: [
+-                Expanded(child: TileHeader('Activity · $weekLabel')),
++                Expanded(child: TileHeader('Aktivität · $weekLabel')),
+                 InfoDot(
+-                  title: 'Activity heatmap',
+-                  body: 'Every day of the last $weekLabel, shaded by the '
+-                      'calories you burned in logged workouts. Empty squares '
+-                      'are days you did not train.',
+-                  methodNote: 'Shade is scaled to your own 90th-percentile '
+-                      'day (currently $scale kcal), so it means the same '
+-                      'thing whatever your usual session looks like.',
++                  title: 'Aktivitäts-Heatmap',
++                  body: 'Jeder Tag der letzten $weekLabel, eingefärbt nach '
++                      'den Kalorien aus deinen erfassten Workouts. Leere Felder '
++                      'sind Tage ohne Training.',
++                  methodNote: 'Die Färbung ist auf deinen eigenen '
++                      '90.-Perzentil-Tag skaliert (aktuell $scale kcal) und '
++                      'bedeutet damit immer dasselbe — egal, wie deine übliche '
++                      'Einheit aussieht.',
+                 ),
+               ],
+             ),
+@@ -474,8 +475,8 @@ class _CalorieHeatmapCardState extends State<CalorieHeatmapCard>
+         children: [
+           _bigValue(groupThousands(total), tone),
+           Text(
+-            '$sessions sessions'
+-            '${streak >= 2 ? ' · $streak-day streak' : ''}',
++            '$sessions Einheiten'
++            '${streak >= 2 ? ' · $streak-Tage-Serie' : ''}',
+             style: AppText.caption.copyWith(color: tone.fgMuted),
+           ),
+         ],
+@@ -488,9 +489,9 @@ class _CalorieHeatmapCardState extends State<CalorieHeatmapCard>
+           _bigValue(d.kcal > 0 ? groupThousands(d.kcal) : '—', tone),
+           Text(
+             d.sessions == 0
+-                ? '${_readoutDate(d.date)} · No workout'
++                ? '${_readoutDate(d.date)} · Kein Workout'
+                 : '${_readoutDate(d.date)} · '
+-                    '${d.sessions > 1 ? '${d.sessions} sessions · ' : ''}'
++                    '${d.sessions > 1 ? '${d.sessions} Einheiten · ' : ''}'
+                     '${d.durationMin} min',
+             style: AppText.caption.copyWith(color: tone.fgMuted),
+           ),
+@@ -690,11 +691,11 @@ class _HeatGrid extends StatelessWidget {
+                 // than the intensity level — "level 3 of 4" describes the
+                 // rendering, not the training.
+                 label: d.sessions == 0
+-                    ? '${_readoutDate(d.date)}, no workout'
++                    ? '${_readoutDate(d.date)}, kein Workout'
+                     : '${_readoutDate(d.date)}, ${d.kcal} kcal, '
+                         '${d.sessions} '
+-                        '${d.sessions == 1 ? 'session' : 'sessions'}, '
+-                        '${d.durationMin} minutes',
++                        '${d.sessions == 1 ? 'Einheit' : 'Einheiten'}, '
++                        '${d.durationMin} Minuten',
+                 child: AnimatedScale(
+                   scale: isSelected ? 1.14 : 1.0,
+                   duration: Motion.springy.d,
+@@ -744,7 +745,7 @@ class _Legend extends StatelessWidget {
+     final style = AppText.caption.copyWith(fontSize: 10, color: tone.fgMuted);
+     return Row(
+       children: [
+-        Text('Less', style: style),
++        Text('Weniger', style: style),
+         const SizedBox(width: Sp.x2),
+         for (var l = 0; l <= 4; l++)
+           Padding(
+@@ -759,9 +760,9 @@ class _Legend extends StatelessWidget {
+             ),
+           ),
+         const SizedBox(width: Sp.x1),
+-        Text('More', style: style),
++        Text('Mehr', style: style),
+         const Spacer(),
+-        Text('kcal per day', style: style),
++        Text('kcal pro Tag', style: style),
+       ],
+     );
+   }
+diff --git a/lib/ui/workouts/manual_workout_screen.dart b/lib/ui/workouts/manual_workout_screen.dart
+index a2db528..b55f574 100644
+--- a/lib/ui/workouts/manual_workout_screen.dart
++++ b/lib/ui/workouts/manual_workout_screen.dart
+@@ -129,7 +129,7 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+       initialDate: _start,
+       firstDate: firstDate,
+       lastDate: now,
+-      helpText: 'Which day?',
++      helpText: 'Welcher Tag?',
+     );
+     if (picked == null || !mounted) return;
+     setState(() {
+@@ -149,7 +149,7 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+     final picked = await showTimePicker(
+       context: context,
+       initialTime: TimeOfDay.fromDateTime(base),
+-      helpText: isStart ? 'When did you start?' : 'When did you finish?',
++      helpText: isStart ? 'Wann hast du angefangen?' : 'Wann hast du aufgehört?',
+     );
+     if (picked == null || !mounted) return;
+     setState(() {
+@@ -174,7 +174,7 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+   }
+ 
+   Future<void> _pickType() async {
+-    final t = await pickWorkoutType(context, title: 'Workout type');
++    final t = await pickWorkoutType(context, title: 'Workout-Typ');
+     if (t == null || !mounted) return;
+     setState(() => _type = t);
+   }
+@@ -203,9 +203,9 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+           _saving = false;
+           _savedUnscored = true;
+           _notice =
+-              'Saved. There is no heart-rate data left for that window, so '
+-              'strain and calories will stay blank — the band only keeps '
+-              'about three days of second-by-second data on the phone.';
++              'Gespeichert. Für dieses Zeitfenster sind keine Herzfrequenzdaten '
++              'mehr da, deshalb bleiben Belastung und Kalorien leer — das Band '
++              'behält nur etwa drei Tage Sekundendaten auf dem Handy.';
+         });
+         return;
+       }
+@@ -224,7 +224,7 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+       if (mounted) {
+         setState(() {
+           _saving = false;
+-          _notice = "Couldn't save that workout. Please try again.";
++          _notice = 'Das Workout konnte nicht gespeichert werden. Versuch es bitte noch mal.';
+         });
+       }
+     }
+@@ -239,16 +239,16 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+         : Duration.zero;
+ 
+     return AppScaffold(
+-      title: _isEdit ? 'Edit times' : 'Log a workout',
++      title: _isEdit ? 'Zeiten bearbeiten' : 'Workout eintragen',
+       subtitle: _isEdit
+-          ? 'Set the window this session actually covered'
+-          : 'For a session your strap missed',
++          ? 'Lege das Zeitfenster fest, das diese Einheit wirklich abgedeckt hat'
++          : 'Für eine Einheit, die dein Band verpasst hat',
+       bottomBar: Padding(
+         padding: const EdgeInsets.fromLTRB(Sp.screen, 0, Sp.screen, Sp.x5),
+         child: _SaveButton(
+           label: _savedUnscored
+-              ? 'Done'
+-              : (_isEdit ? 'Save times' : 'Log workout'),
++              ? 'Fertig'
++              : (_isEdit ? 'Zeiten speichern' : 'Workout eintragen'),
+           enabled: (_savedUnscored || err == null) && !_saving,
+           busy: _saving,
+           onTap: () {
+@@ -272,14 +272,14 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+               if (!_isEdit)
+                 ListRow(
+                   icon: workoutTypeIcon(_type),
+-                  title: 'Type',
++                  title: 'Typ',
+                   value: workoutTypeLabel(_type),
+                   onTap: _pickType,
+                   divider: true,
+                 ),
+               ListRow(
+                 icon: OsIcon.calendar,
+-                title: 'Date',
++                title: 'Datum',
+                 value: _dateLabel(_start),
+                 onTap: _pickDate,
+                 divider: true,
+@@ -293,9 +293,9 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+               ),
+               ListRow(
+                 icon: OsIcon.history,
+-                title: 'Finish',
++                title: 'Ende',
+                 value: _timeLabel(context, _end) +
+-                    (_end.day != _start.day ? ' (next day)' : ''),
++                    (_end.day != _start.day ? ' (nächster Tag)' : ''),
+                 onTap: () => _pickTime(isStart: false),
+               ),
+             ],
+@@ -308,7 +308,7 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+             child: Column(
+               crossAxisAlignment: CrossAxisAlignment.start,
+               children: [
+-                Text('DURATION',
++                Text('DAUER',
+                     style: AppText.overline.copyWith(color: tone.fgFaint)),
+                 const SizedBox(height: Sp.x1),
+                 Text(
+@@ -330,11 +330,12 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+         const SizedBox(height: Sp.x4),
+         Text(
+           _isEdit
+-              ? 'Strain, calories and heart rate are recomputed from the '
+-                  'second-by-second data inside the new window.'
+-              : 'Strain, calories and heart rate are read from the '
+-                  'second-by-second data your strap already recorded for that '
+-                  'window — nothing is estimated from the duration alone.',
++              ? 'Belastung, Kalorien und Herzfrequenz werden aus den '
++                  'Sekundendaten im neuen Zeitfenster neu berechnet.'
++              : 'Belastung, Kalorien und Herzfrequenz werden aus den '
++                  'Sekundendaten gelesen, die dein Band für dieses Zeitfenster '
++                  'schon aufgezeichnet hat — nichts wird allein aus der Dauer '
++                  'geschätzt.',
+           style: AppText.captionMuted.copyWith(color: tone.fgMuted),
+         ),
+         const SizedBox(height: Sp.x6),
+@@ -352,16 +353,16 @@ class _ManualWorkoutScreenState extends State<ManualWorkoutScreen> {
+ /// identity, which is what `dayLabelOf` encodes.
+ String _dateLabel(DateTime d) {
+   const mon = [
+-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++    'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++    'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+   ];
+   final label = dayLabelOf(d);
+-  if (label == todayLabel()) return 'Today';
++  if (label == todayLabel()) return 'Heute';
+   final now = DateTime.now();
+   if (label == dayLabelOf(DateTime(now.year, now.month, now.day - 1))) {
+-    return 'Yesterday';
++    return 'Gestern';
+   }
+-  return '${mon[d.month - 1]} ${d.day}';
++  return '${d.day}. ${mon[d.month - 1]}';
+ }
+ 
+ String _timeLabel(BuildContext context, DateTime d) =>
+diff --git a/lib/ui/workouts/workout_filter.dart b/lib/ui/workouts/workout_filter.dart
+index 03d439a..5bc68de 100644
+--- a/lib/ui/workouts/workout_filter.dart
++++ b/lib/ui/workouts/workout_filter.dart
+@@ -16,10 +16,10 @@ enum WorkoutSort {
+   hardest;
+ 
+   String get label => switch (this) {
+-    WorkoutSort.newest => 'Newest',
+-    WorkoutSort.oldest => 'Oldest',
+-    WorkoutSort.longest => 'Longest',
+-    WorkoutSort.hardest => 'Hardest',
++    WorkoutSort.newest => 'Neueste',
++    WorkoutSort.oldest => 'Älteste',
++    WorkoutSort.longest => 'Längste',
++    WorkoutSort.hardest => 'Härteste',
+   };
+ 
+   /// Whether the order still runs along the calendar. The feed groups by week,
+@@ -79,10 +79,10 @@ class WorkoutFilter {
+     final parts = <String>[];
+     if (types.isNotEmpty) {
+       final names = types.map(workoutTypeLabel).toList()..sort();
+-      parts.add(names.length <= 2 ? names.join(', ') : '${names.length} types');
++      parts.add(names.length <= 2 ? names.join(', ') : '${names.length} Typen');
+     }
+     if (minMinutes > 0) parts.add('${minMinutes}m+');
+-    if (minStrain > 0) parts.add('strain ${minStrain.toStringAsFixed(0)}+');
++    if (minStrain > 0) parts.add('Belastung ${minStrain.toStringAsFixed(0)}+');
+     return parts.join(' · ');
+   }
+ 
+diff --git a/lib/ui/workouts/workout_filter_sheet.dart b/lib/ui/workouts/workout_filter_sheet.dart
+index bad36c5..47d8436 100644
+--- a/lib/ui/workouts/workout_filter_sheet.dart
++++ b/lib/ui/workouts/workout_filter_sheet.dart
+@@ -65,12 +65,12 @@ class _FilterSheetState extends State<_FilterSheet> {
+             children: [
+               Row(
+                 children: [
+-                  Expanded(child: Text('Filter workouts', style: AppText.h2)),
++                  Expanded(child: Text('Workouts filtern', style: AppText.h2)),
+                   if (!_draft.isDefault)
+                     TextButton(
+                       onPressed: () =>
+                           setState(() => _draft = const WorkoutFilter()),
+-                      child: const Text('Clear'),
++                      child: const Text('Zurücksetzen'),
+                     ),
+                 ],
+               ),
+@@ -80,7 +80,7 @@ class _FilterSheetState extends State<_FilterSheet> {
+                   child: Column(
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+-                      _label('Type'),
++                      _label('Typ'),
+                       Wrap(
+                         spacing: Sp.x2,
+                         runSpacing: Sp.x2,
+@@ -94,14 +94,14 @@ class _FilterSheetState extends State<_FilterSheet> {
+                         ],
+                       ),
+                       const SizedBox(height: Sp.x4),
+-                      _label('Minimum duration'),
++                      _label('Mindestdauer'),
+                       Wrap(
+                         spacing: Sp.x2,
+                         runSpacing: Sp.x2,
+                         children: [
+                           for (final m in _durationSteps)
+                             ToggleChip(
+-                              m == 0 ? 'Any' : '${m}m',
++                              m == 0 ? 'Alle' : '${m}m',
+                               selected: _draft.minMinutes == m,
+                               onTap: () => setState(
+                                 () => _draft = _draft.copyWith(minMinutes: m),
+@@ -110,14 +110,14 @@ class _FilterSheetState extends State<_FilterSheet> {
+                         ],
+                       ),
+                       const SizedBox(height: Sp.x4),
+-                      _label('Minimum strain'),
++                      _label('Mindestbelastung'),
+                       Wrap(
+                         spacing: Sp.x2,
+                         runSpacing: Sp.x2,
+                         children: [
+                           for (final s in _strainSteps)
+                             ToggleChip(
+-                              s == 0 ? 'Any' : s.toStringAsFixed(0),
++                              s == 0 ? 'Alle' : s.toStringAsFixed(0),
+                               selected: _draft.minStrain == s,
+                               onTap: () => setState(
+                                 () => _draft = _draft.copyWith(minStrain: s),
+@@ -126,7 +126,7 @@ class _FilterSheetState extends State<_FilterSheet> {
+                         ],
+                       ),
+                       const SizedBox(height: Sp.x4),
+-                      _label('Sort'),
++                      _label('Sortierung'),
+                       Wrap(
+                         spacing: Sp.x2,
+                         runSpacing: Sp.x2,
+@@ -151,7 +151,7 @@ class _FilterSheetState extends State<_FilterSheet> {
+                 child: FilledButton(
+                   onPressed: () => Navigator.pop(context, _draft),
+                   child: Text(
+-                    matches == 1 ? 'Show 1 workout' : 'Show $matches workouts',
++                    matches == 1 ? '1 Workout anzeigen' : '$matches Workouts anzeigen',
+                   ),
+                 ),
+               ),
+diff --git a/lib/ui/workouts/workout_types.dart b/lib/ui/workouts/workout_types.dart
+index 86861bf..a9aef9a 100644
+--- a/lib/ui/workouts/workout_types.dart
++++ b/lib/ui/workouts/workout_types.dart
+@@ -19,27 +19,27 @@ import '../design/design.dart';
+ // expensive illustration), there's no reason for the compact glyph and the
+ // "full" icon to ever differ, so every row just uses the same icon twice.
+ const kWorkoutTypes = <(String, String, OsIcon, OsIcon?)>[
+-  ('run', 'Run', OsIcon.run, OsIcon.run),
+-  ('cycle', 'Cycle', OsIcon.cycling, OsIcon.cycling),
+-  ('strength', 'Strength', OsIcon.strength, OsIcon.strength),
+-  ('walk', 'Walk', OsIcon.walk, OsIcon.walk),
+-  ('swim', 'Swim', OsIcon.swim, OsIcon.swim),
++  ('run', 'Laufen', OsIcon.run, OsIcon.run),
++  ('cycle', 'Radfahren', OsIcon.cycling, OsIcon.cycling),
++  ('strength', 'Krafttraining', OsIcon.strength, OsIcon.strength),
++  ('walk', 'Gehen', OsIcon.walk, OsIcon.walk),
++  ('swim', 'Schwimmen', OsIcon.swim, OsIcon.swim),
+   ('cardio', 'Cardio', OsIcon.cardio, OsIcon.cardio),
+   ('yoga', 'Yoga', OsIcon.yoga, OsIcon.yoga),
+   ('hiit', 'HIIT', OsIcon.hiit, OsIcon.hiit),
+-  ('boxing', 'Boxing', OsIcon.boxing, OsIcon.boxing),
+-  ('rowing', 'Rowing', OsIcon.rowing, OsIcon.rowing),
+-  ('hike', 'Hike', OsIcon.hike, OsIcon.hike),
+-  ('climb', 'Climb', OsIcon.climb, OsIcon.climb),
++  ('boxing', 'Boxen', OsIcon.boxing, OsIcon.boxing),
++  ('rowing', 'Rudern', OsIcon.rowing, OsIcon.rowing),
++  ('hike', 'Wandern', OsIcon.hike, OsIcon.hike),
++  ('climb', 'Klettern', OsIcon.climb, OsIcon.climb),
+   ('ski', 'Ski', OsIcon.ski, OsIcon.ski),
+   ('snowboard', 'Snowboard', OsIcon.snowboard, OsIcon.snowboard),
+-  ('stairs', 'Stairs', OsIcon.stairs, OsIcon.stairs),
++  ('stairs', 'Treppen', OsIcon.stairs, OsIcon.stairs),
+   ('pilates', 'Pilates', OsIcon.pilates, OsIcon.pilates),
+-  ('tennis', 'Racquet', OsIcon.tennis, OsIcon.tennis),
++  ('tennis', 'Schlägersport', OsIcon.tennis, OsIcon.tennis),
+   ('basketball', 'Basketball', OsIcon.basketball, OsIcon.basketball),
+-  ('soccer', 'Soccer', OsIcon.soccer, OsIcon.soccer),
++  ('soccer', 'Fußball', OsIcon.soccer, OsIcon.soccer),
+   ('golf', 'Golf', OsIcon.golf, OsIcon.golf),
+-  ('other', 'Other', OsIcon.workoutOther, OsIcon.workoutOther),
++  ('other', 'Sonstiges', OsIcon.workoutOther, OsIcon.workoutOther),
+ ];
+ 
+ /// Built-ins by key, so a lookup does not walk the list.
+@@ -241,7 +241,7 @@ Widget workoutTypeSheet(
+ /// reach it without the two screen files importing each other.
+ Future<String?> pickWorkoutType(
+   BuildContext context, {
+-  String title = 'Set workout type',
++  String title = 'Workout-Typ festlegen',
+ }) {
+   return showModalBottomSheet<String>(
+     context: context,
+diff --git a/lib/ui/workouts/workouts_screen.dart b/lib/ui/workouts/workouts_screen.dart
+index 81c1c87..cb3a54d 100644
+--- a/lib/ui/workouts/workouts_screen.dart
++++ b/lib/ui/workouts/workouts_screen.dart
+@@ -26,12 +26,12 @@ import '../kit/route_map.dart';
+ import '../screens/detail_cards.dart' show hm;
+ import '../../gps/route_models.dart';
+ import 'manual_workout_screen.dart';
+-import '../stress/interval_timer_screen.dart';
++import '../timer/interval_timer_screen.dart';
+ import 'workout_filter.dart';
+ import 'workout_filter_sheet.dart';
+ import 'workout_types.dart';
+ 
+-const _ranges = ['Today', 'Week', 'Month', '3M'];
++const _ranges = ['Heute', 'Woche', 'Monat', '3M'];
+ const _rangeKey = [
+   'week',
+   'week',
+@@ -46,13 +46,13 @@ String _dayLabel(int? startTs) {
+   final today = DateTime(now.year, now.month, now.day);
+   final that = DateTime(d.year, d.month, d.day);
+   final diff = today.difference(that).inDays;
+-  if (diff == 0) return 'Today';
+-  if (diff == 1) return 'Yesterday';
++  if (diff == 0) return 'Heute';
++  if (diff == 1) return 'Gestern';
+   const mon = [
+-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++    'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++    'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+   ];
+-  return '${mon[d.month - 1]} ${d.day}';
++  return '${d.day}. ${mon[d.month - 1]}';
+ }
+ 
+ String _clockLabel(int? startTs) {
+@@ -73,13 +73,13 @@ String _whenLabel(int? startTs) {
+   final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+   final ap = d.hour < 12 ? 'AM' : 'PM';
+   final time = '$h:${d.minute.toString().padLeft(2, '0')} $ap';
+-  if (diff == 0) return 'Today · $time';
+-  if (diff == 1) return 'Yesterday · $time';
++  if (diff == 0) return 'Heute · $time';
++  if (diff == 1) return 'Gestern · $time';
+   const mon = [
+-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++    'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++    'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+   ];
+-  return '${mon[d.month - 1]} ${d.day} · $time';
++  return '${d.day}. ${mon[d.month - 1]} · $time';
+ }
+ 
+ /// Bottom-sheet exercise picker → starts a workout → opens the live screen.
+@@ -96,7 +96,7 @@ Future<void> startWorkoutFlow(BuildContext context) async {
+     isScrollControlled: true,
+     builder: (ctx) => workoutTypeSheet(
+       ctx,
+-      'Start a workout',
++      'Workout starten',
+       // Reachable from here because this is where someone is standing when
+       // they want one — rounds, HIIT, rest between sets. It records nothing,
+       // so it is not a workout type; it sits under them.
+@@ -117,7 +117,7 @@ Future<void> startWorkoutFlow(BuildContext context) async {
+             Icon(Icons.timer_outlined, size: 18, color: AppColors.accent),
+             const SizedBox(width: Sp.x2),
+             Text(
+-              'Interval timer',
++              'Intervall-Timer',
+               style: AppText.label.copyWith(color: AppColors.accent),
+             ),
+           ],
+@@ -359,7 +359,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
+               Sp.screen, Sp.x2, Sp.screen, dsBottomGutter(context)),
+           children: [
+             if (!_loading && _suggestions.isNotEmpty) ...[
+-              const SectionHeader('Suggested workouts'),
++              const SectionHeader('Vorgeschlagene Workouts'),
+               for (final s in _suggestions)
+                 Padding(
+                   padding: const EdgeInsets.only(bottom: Sp.x3),
+@@ -403,20 +403,22 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
+               if (list.isEmpty && _filter.isNarrowing)
+                 StateCard(
+                   icon: OsIcon.run,
+-                  title: 'Nothing matches',
+-                  message: 'No workout in this timeframe fits the filter. '
+-                      'Widen it, or clear it to see everything again.',
+-                  actionLabel: 'Clear filter',
++                  title: 'Keine Treffer',
++                  message: 'Kein Workout in diesem Zeitraum passt zum Filter. '
++                      'Erweitere ihn oder setze ihn zurück, um wieder alles '
++                      'zu sehen.',
++                  actionLabel: 'Filter zurücksetzen',
+                   onAction: () =>
+                       setState(() => _filter = const WorkoutFilter()),
+                 )
+               else if (list.isEmpty)
+                 StateCard(
+                   icon: OsIcon.run,
+-                  title: 'No workouts',
+-                  message: 'Tap Start, or an effort will be auto-detected. '
+-                      'You can also log one you already finished.',
+-                  actionLabel: 'Start a workout',
++                  title: 'Keine Workouts',
++                  message: 'Tippe auf Start — oder eine Belastung wird '
++                      'automatisch erkannt. Du kannst auch ein schon beendetes '
++                      'Workout eintragen.',
++                  actionLabel: 'Workout starten',
+                   onAction: () => startWorkoutFlow(context).then((_) => _load()),
+                 )
+               else
+@@ -446,11 +448,11 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
+       // Week buckets only mean something in calendar order. Under "longest" or
+       // "hardest" the list is flat, headed by what it's ordered by.
+       for (final w in list) {
+-        add('${_filter.sort.label} first', w);
++        add('${_filter.sort.label} zuerst', w);
+       }
+     } else if (_range == 0) {
+       for (final w in list) {
+-        add('Today', w);
++        add('Heute', w);
+       }
+     } else {
+       for (final w in list) {
+@@ -472,7 +474,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
+ 
+   /// Week bucket label for a session start (epoch seconds).
+   String _weekLabel(int? startTs) {
+-    if (startTs == null || startTs == 0) return 'Earlier';
++    if (startTs == null || startTs == 0) return 'Früher';
+     final d = DateTime.fromMillisecondsSinceEpoch(startTs * 1000).toLocal();
+     final now = DateTime.now();
+     DateTime weekStart(DateTime x) {
+@@ -483,13 +485,13 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
+     final thisWeek = weekStart(now);
+     final wk = weekStart(d);
+     final diffWeeks = thisWeek.difference(wk).inDays ~/ 7;
+-    if (diffWeeks <= 0) return 'This week';
+-    if (diffWeeks == 1) return 'Last week';
++    if (diffWeeks <= 0) return 'Diese Woche';
++    if (diffWeeks == 1) return 'Letzte Woche';
+     const months = [
+-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++      'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++      'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+     ];
+-    return 'Week of ${months[wk.month - 1]} ${wk.day}';
++    return 'Woche vom ${wk.day}. ${months[wk.month - 1]}';
+   }
+ 
+   Widget _row(
+@@ -540,7 +542,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
+             Icon(Icons.delete_outline, size: 20, color: AppColors.critical),
+             const SizedBox(width: Sp.x2),
+             Text(
+-              'Delete',
++              'Löschen',
+               style: TextStyle(
+                 color: AppColors.critical,
+                 fontWeight: FontWeight.w700,
+@@ -580,20 +582,20 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
+       context: context,
+       builder: (ctx) => AlertDialog(
+         backgroundColor: AppColors.surface,
+-        title: Text('Delete this workout?', style: AppText.title),
++        title: Text('Dieses Workout löschen?', style: AppText.title),
+         content: Text(
+-          'It will be removed for good. Auto-detected efforts won’t come back.',
++          'Es wird endgültig entfernt. Automatisch erkannte Einheiten kommen nicht zurück.',
+           style: AppText.bodySoft,
+         ),
+         actions: [
+           TextButton(
+             onPressed: () => Navigator.pop(ctx, false),
+-            child: const Text('Cancel'),
++            child: const Text('Abbrechen'),
+           ),
+           TextButton(
+             onPressed: () => Navigator.pop(ctx, true),
+             child: Text(
+-              'Delete',
++              'Löschen',
+               style: TextStyle(
+                 color: AppColors.critical,
+                 fontWeight: FontWeight.w700,
+@@ -629,7 +631,7 @@ class _AddButton extends StatelessWidget {
+   Widget build(BuildContext context) {
+     return Semantics(
+       button: true,
+-      label: 'Log a past workout',
++      label: 'Vergangenes Workout eintragen',
+       child: Pressable(
+         pressedScale: 0.94,
+         onTap: onTap,
+@@ -645,7 +647,7 @@ class _AddButton extends StatelessWidget {
+             children: [
+               Icon(Icons.add_rounded, size: 18, color: AppColors.accent),
+               const SizedBox(width: Sp.x1),
+-              Text('Add',
++              Text('Hinzufügen',
+                   style: AppText.label.copyWith(color: AppColors.accent)),
+             ],
+           ),
+@@ -677,7 +679,7 @@ class _FilterBar extends StatelessWidget {
+         ? filter.description
+         : (filter.sort == WorkoutSort.newest
+               ? 'Filter'
+-              : 'Sorted: ${filter.sort.label.toLowerCase()}');
++              : 'Sortiert: ${filter.sort.label.toLowerCase()}');
+     return Row(
+       children: [
+         // Flexible + ellipsis, and no Spacer. The description grows with every
+@@ -689,8 +691,8 @@ class _FilterBar extends StatelessWidget {
+           child: Semantics(
+             button: true,
+             label: active
+-                ? 'Filter workouts, active: $label'
+-                : 'Filter workouts',
++                ? 'Workouts filtern, aktiv: $label'
++                : 'Workouts filtern',
+             child: Pressable(
+               pressedScale: 0.96,
+               onTap: onTap,
+@@ -735,7 +737,7 @@ class _FilterBar extends StatelessWidget {
+         if (active)
+           Semantics(
+             button: true,
+-            label: 'Clear workout filter',
++            label: 'Workout-Filter zurücksetzen',
+             child: Pressable(
+               pressedScale: 0.9,
+               onTap: onClear,
+@@ -893,7 +895,7 @@ class _WindowLabel extends StatelessWidget {
+       // with the same en dash.
+       key: const Key('workout-window-edit'),
+       button: true,
+-      label: 'Edit workout times. Currently $text',
++      label: 'Workout-Zeiten bearbeiten. Aktuell $text',
+       child: Pressable(
+         pressedScale: 0.98,
+         onTap: onTap,
+@@ -941,31 +943,32 @@ class _SuggestionCard extends StatelessWidget {
+               child: Column(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+-                  Text('Did you work out?', style: AppText.title),
++                  Text('Hast du trainiert?', style: AppText.title),
+                   const SizedBox(height: 1),
+                   Text(
+                     '${_whenLabel(start)} · ${dur ?? '—'} min'
+-                    '${avg != null ? ' · avg $avg' : ''}'
+-                    '${peak != null ? ' · peak $peak bpm' : ''}',
++                    '${avg != null ? ' · Ø $avg' : ''}'
++                    '${peak != null ? ' · Spitze $peak bpm' : ''}',
+                     style: AppText.captionMuted,
+                   ),
+                 ],
+               ),
+             ),
+             InfoDot(
+-              title: 'Auto-detected effort',
++              title: 'Automatisch erkannte Belastung',
+               body:
+-                  'We spotted a stretch of elevated heart rate that looks like '
+-                  'a workout. Confirm to log it — we never log one silently.',
++                  'Wir haben eine Phase mit erhöhter Herzfrequenz entdeckt, '
++                  'die nach einem Workout aussieht. Bestätige, um es '
++                  'einzutragen — wir tragen nie etwas unbemerkt ein.',
+             ),
+           ]),
+           const SizedBox(height: Sp.x3),
+           Row(children: [
+             Expanded(
+-              child: FilledButton(onPressed: onConfirm, child: const Text('Log it')),
++              child: FilledButton(onPressed: onConfirm, child: const Text('Eintragen')),
+             ),
+             const SizedBox(width: Sp.x3),
+-            TextButton(onPressed: onDismiss, child: const Text('Dismiss')),
++            TextButton(onPressed: onDismiss, child: const Text('Verwerfen')),
+           ]),
+         ],
+       ),
+@@ -1033,13 +1036,14 @@ class TrainingSummaryCard extends StatelessWidget {
+               Expanded(
+                   child: TileHeader('Training · $range')),
+               InfoDot(
+-                title: 'Training summary',
++                title: 'Trainingsübersicht',
+                 body:
+-                    'Everything you logged this ${range.toLowerCase()}: total '
+-                    'active time, calories, average heart rate and strain, and '
+-                    'how the time split across your heart-rate zones.',
++                    'Alles, was du in diesem Zeitraum ($range) erfasst hast: '
++                    'gesamte aktive Zeit, Kalorien, durchschnittliche '
++                    'Herzfrequenz und Belastung sowie die Verteilung auf deine '
++                    'Herzfrequenz-Zonen.',
+                 methodNote: acc != null && reviewed > 0
+-                    ? 'Auto-type accuracy ${(acc * 100).round()}% over $reviewed reviewed'
++                    ? 'Auto-Typ-Genauigkeit ${(acc * 100).round()}% bei $reviewed geprüften'
+                     : null,
+               ),
+             ],
+@@ -1048,18 +1052,18 @@ class TrainingSummaryCard extends StatelessWidget {
+           BigStat(
+             value: hm(totalMin),
+             size: BigStatSize.xl,
+-            caption: 'active this ${range.toLowerCase()}',
++            caption: 'aktiv · $range',
+           ),
+           const SizedBox(height: Sp.x4),
+           Row(
+             children: [
+-              _miniStat(context, '$count', 'workouts'),
++              _miniStat(context, '$count', 'Workouts'),
+               _miniStat(context, kcal?.toString() ?? '—', 'kcal'),
+-              _miniStat(context, avgBpm == null ? '—' : '$avgBpm', 'avg bpm'),
++              _miniStat(context, avgBpm == null ? '—' : '$avgBpm', 'Ø bpm'),
+               _miniStat(
+                 context,
+                 avgStrain == null ? '—' : avgStrain.toStringAsFixed(1),
+-                'avg strain',
++                'Ø Belastung',
+               ),
+             ],
+           ),
+@@ -1245,7 +1249,7 @@ class WorkoutFeedCard extends StatelessWidget {
+                   // seeing for workouts with no real strain figure. Gate the
+                   // text-vs-gauge choice on strain==null directly instead.
+                   ((noData || strain == null)
+-                      ? Text('No data',
++                      ? Text('Keine Daten',
+                           style: AppText.captionMuted
+                               .copyWith(color: tone.fgMuted))
+                       : ArcGauge(
+@@ -1271,7 +1275,7 @@ class WorkoutFeedCard extends StatelessWidget {
+               const SizedBox(height: Sp.x3),
+               Row(
+                 children: [
+-                  PrBadge(_isTopWorkout ? 'PR · top workout' : 'PR · most steps'),
++                  PrBadge(_isTopWorkout ? 'PR · Top-Workout' : 'PR · meiste Schritte'),
+                 ],
+               ),
+             ],
+@@ -1324,20 +1328,20 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
+       context: context,
+       builder: (ctx) => AlertDialog(
+         backgroundColor: AppColors.surface,
+-        title: Text('Delete this workout?', style: AppText.title),
++        title: Text('Dieses Workout löschen?', style: AppText.title),
+         content: Text(
+-          'It will be removed for good. Auto-detected efforts won’t come back.',
++          'Es wird endgültig entfernt. Automatisch erkannte Einheiten kommen nicht zurück.',
+           style: AppText.bodySoft,
+         ),
+         actions: [
+           TextButton(
+             onPressed: () => Navigator.pop(ctx, false),
+-            child: const Text('Cancel'),
++            child: const Text('Abbrechen'),
+           ),
+           TextButton(
+             onPressed: () => Navigator.pop(ctx, true),
+             child: Text(
+-              'Delete',
++              'Löschen',
+               style: TextStyle(
+                 color: AppColors.critical,
+                 fontWeight: FontWeight.w700,
+@@ -1472,7 +1476,7 @@ class _WorkoutDetailBodyState extends State<_WorkoutDetailBody> {
+     if (d == null) return;
+     final id = d['id'] as String?;
+     if (id == null) return;
+-    final t = await pickWorkoutType(context, title: 'Correct workout type');
++    final t = await pickWorkoutType(context, title: 'Workout-Typ korrigieren');
+     if (t == null || !mounted) return;
+     final api = context.read<AppState>().repo;
+     if (api == null) return;
+@@ -1506,7 +1510,7 @@ class _WorkoutDetailBodyState extends State<_WorkoutDetailBody> {
+     }
+     final d = _d;
+     if (d == null || d.isEmpty) {
+-      return Center(child: Text('Not found', style: AppText.captionMuted));
++      return Center(child: Text('Nicht gefunden', style: AppText.captionMuted));
+     }
+     final units = context.watch<UnitsController>();
+     final route = _route;
+@@ -1609,7 +1613,7 @@ class WorkoutDetailContent extends StatelessWidget {
+         // ── HEART RATE ── (minute curve, recent workouts only)
+         if (!workoutRecent) ...[
+           const SizedBox(height: Sp.x3),
+-          const DetailRetentionNote(what: 'minute-by-minute heart rate'),
++          const DetailRetentionNote(what: 'minütliche Herzfrequenz'),
+         ] else if (hrPoints.length > 1) ...[
+           const SizedBox(height: Sp.x3),
+           _hrChartCard(hrPoints, hr, bands, startTs, endTs),
+@@ -1635,7 +1639,7 @@ class WorkoutDetailContent extends StatelessWidget {
+             ),
+             child: ListRow(
+               icon: OsIcon.heartRateRecovery,
+-              title: 'HR recovery (60s)',
++              title: 'HF-Erholung (60s)',
+               value: '−${d['hrr60']} bpm',
+             ),
+           ),
+@@ -1733,16 +1737,17 @@ class WorkoutDetailContent extends StatelessWidget {
+                       const SizedBox(height: Sp.x1),
+                       Row(
+                         children: [
+-                          Text('DURATION',
++                          Text('DAUER',
+                               style: AppText.overline
+                                   .copyWith(color: tone.fgFaint)),
+                           InfoDot(
+-                            title: 'Strain',
++                            title: 'Belastung',
+                             body:
+-                                'Cardiovascular load for this session on a 0–21 '
+-                                'scale, from time spent in your heart-rate zones.',
++                                'Kardiovaskuläre Last dieser Einheit auf einer '
++                                'Skala von 0–21, aus der Zeit in deinen '
++                                'Herzfrequenz-Zonen.',
+                             methodNote:
+-                                'Banister/Edwards TRIMP, squashed to 0–21',
++                                'Banister/Edwards-TRIMP, auf 0–21 gestaucht',
+                           ),
+                         ],
+                       ),
+@@ -1763,7 +1768,7 @@ class WorkoutDetailContent extends StatelessWidget {
+                         Text(strain.toStringAsFixed(1),
+                             style: AppText.metricSm
+                                 .copyWith(fontSize: 20, color: tone.fg)),
+-                        Text('STRAIN',
++                        Text('BELASTUNG',
+                             style: AppText.overline.copyWith(
+                                 fontSize: 8, color: tone.fgFaint)),
+                       ],
+@@ -1775,12 +1780,13 @@ class WorkoutDetailContent extends StatelessWidget {
+               const SizedBox(height: Sp.x3),
+               Row(
+                 children: [
+-                  const StatusChip('No heart-rate data', tone: ChipTone.warn),
++                  const StatusChip('Keine Herzfrequenzdaten', tone: ChipTone.warn),
+                   InfoDot(
+-                    title: 'No heart-rate data',
++                    title: 'Keine Herzfrequenzdaten',
+                     body:
+-                        'The band wasn\'t syncing during this window, so strain '
+-                        'and zones can\'t be computed for this workout.',
++                        'Das Band hat in diesem Zeitfenster nicht '
++                        'synchronisiert, deshalb lassen sich Belastung und '
++                        'Zonen für dieses Workout nicht berechnen.',
+                   ),
+                 ],
+               ),
+@@ -1788,17 +1794,17 @@ class WorkoutDetailContent extends StatelessWidget {
+             const SizedBox(height: Sp.x4),
+             Row(
+               children: [
+-                _toneStat(tone, noData ? '—' : '${d['avg_hr'] ?? '—'}', 'avg bpm'),
+-                _toneStat(tone, noData ? '—' : '${d['max_hr'] ?? '—'}', 'max bpm'),
++                _toneStat(tone, noData ? '—' : '${d['avg_hr'] ?? '—'}', 'Ø bpm'),
++                _toneStat(tone, noData ? '—' : '${d['max_hr'] ?? '—'}', 'Max bpm'),
+                 // A dash, not a 0 — this is the most-viewed place a session
+                 // that was never costed could claim to have burned nothing.
+                 _toneStat(tone, '${d['calories'] ?? '—'}', 'kcal'),
+                 if (distanceLabel != null)
+-                  _toneStat(tone, distanceLabel!, 'distance')
++                  _toneStat(tone, distanceLabel!, 'Distanz')
+                 // Steps are recorded only for manual workouts ridden by the live
+                 // 100 Hz stream; older/auto sessions have none.
+                 else if (steps > 0)
+-                  _toneStat(tone, '$steps', 'steps'),
++                  _toneStat(tone, '$steps', 'Schritte'),
+               ],
+             ),
+           ],
+@@ -1845,16 +1851,19 @@ class WorkoutDetailContent extends StatelessWidget {
+         children: [
+           Row(
+             children: [
+-              Expanded(child: Text('Heart rate', style: AppText.h2)),
++              Expanded(child: Text('Herzfrequenz', style: AppText.h2)),
+               InfoDot(
+-                title: 'Heart rate',
++                title: 'Herzfrequenz',
+                 body:
+-                    'Your minute-by-minute heart rate through the session, '
+-                    'shaded by your zones. Drag to read a point; ▶ replays it.',
++                    'Deine minütliche Herzfrequenz über die Einheit, '
++                    'eingefärbt nach deinen Zonen. Ziehe, um einen Punkt '
++                    'abzulesen; ▶ spielt sie ab.',
+                 bullets: const [
+-                  'Cardiac drift: how much HR crept up at the same effort — '
+-                      'heat, dehydration or fatigue push it above ~3%',
+-                  'Time to peak: minutes until your highest heart rate',
++                  'Kardiale Drift: wie stark die HF bei gleicher '
++                      'Anstrengung gestiegen ist — Hitze, Dehydrierung oder '
++                      'Ermüdung treiben sie über ~3%',
++                  'Zeit bis zum Peak: Minuten bis zu deiner höchsten '
++                      'Herzfrequenz',
+                 ],
+               ),
+             ],
+@@ -1937,7 +1946,7 @@ class WorkoutDetailContent extends StatelessWidget {
+               spacing: Sp.x2,
+               runSpacing: Sp.x2,
+               children: [
+-                if (ttp != null) StatusChip('Peak in ${ttp.toInt()} min'),
++                if (ttp != null) StatusChip('Peak nach ${ttp.toInt()} min'),
+                 if (drift != null)
+                   StatusChip(
+                     'Drift ${drift > 0 ? '+' : ''}${drift.toStringAsFixed(1)}%',
+@@ -1958,12 +1967,13 @@ class WorkoutDetailContent extends StatelessWidget {
+         children: [
+           Row(
+             children: [
+-              Expanded(child: Text('Time in zones', style: AppText.h2)),
++              Expanded(child: Text('Zeit in Zonen', style: AppText.h2)),
+               InfoDot(
+-                title: 'Heart-rate zones',
++                title: 'Herzfrequenz-Zonen',
+                 body:
+-                    'Zones are % of your max heart rate: Z1 warm-up → Z5 max '
+-                    'effort. Ranges below are your personal bpm bands.',
++                    'Zonen sind % deiner maximalen Herzfrequenz: Z1 '
++                    'Aufwärmen → Z5 Maximalbelastung. Darunter stehen deine '
++                    'persönlichen bpm-Bereiche.',
+               ),
+             ],
+           ),
+@@ -2030,12 +2040,13 @@ class WorkoutDetailContent extends StatelessWidget {
+         children: [
+           Row(
+             children: [
+-              Expanded(child: Text('Heart-rate recovery', style: AppText.h2)),
++              Expanded(child: Text('Herzfrequenz-Erholung', style: AppText.h2)),
+               InfoDot(
+-                title: 'Heart-rate recovery',
++                title: 'Herzfrequenz-Erholung',
+                 body:
+-                    'How many bpm your heart rate dropped in the minutes after '
+-                    'the effort — a faster drop generally means better fitness.',
++                    'Um wie viele bpm deine Herzfrequenz in den Minuten '
++                    'nach der Belastung gesunken ist — ein schnellerer Abfall '
++                    'bedeutet meist bessere Fitness.',
+               ),
+             ],
+           ),
+@@ -2129,7 +2140,7 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
+     try {
+       await _logDetectedSession(s, context.read<AppState>());
+     } catch (_) {
+-      _showActionFailure('Could not log this workout — try again.');
++      _showActionFailure('Das Workout konnte nicht eingetragen werden — versuch es noch mal.');
+       return;
+     }
+     await _afterAction();
+@@ -2139,7 +2150,7 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
+     try {
+       await LocalDb.dismissWorkoutSuggestion(s['id'] as String);
+     } catch (_) {
+-      _showActionFailure('Could not dismiss this suggestion — try again.');
++      _showActionFailure('Der Vorschlag konnte nicht verworfen werden — versuch es noch mal.');
+       return;
+     }
+     await _afterAction();
+@@ -2165,7 +2176,7 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
+   @override
+   Widget build(BuildContext context) {
+     return AppScaffold(
+-      title: 'Detected activity',
++      title: 'Erkannte Aktivität',
+       children: [
+         if (_loading)
+           const Padding(
+@@ -2177,9 +2188,9 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
+             padding: const EdgeInsets.only(top: Sp.x6),
+             child: StateCard(
+               icon: OsIcon.sync,
+-              title: "Couldn't load",
+-              message: 'Check your connection and try again.',
+-              actionLabel: 'Retry',
++              title: 'Laden fehlgeschlagen',
++              message: 'Prüfe deine Verbindung und versuch es noch mal.',
++              actionLabel: 'Erneut versuchen',
+               onAction: _load,
+             ),
+           )
+@@ -2187,8 +2198,8 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
+           Padding(
+             padding: const EdgeInsets.only(top: Sp.x6),
+             child: Text(
+-              'Nothing to review right now — this activity may already have '
+-              'been logged or dismissed.',
++              'Gerade gibt es nichts zu prüfen — diese Aktivität wurde '
++              'vielleicht schon eingetragen oder verworfen.',
+               style: AppText.captionMuted,
+             ),
+           )

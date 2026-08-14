@@ -1,0 +1,2137 @@
+diff --git a/lib/ui/ai/ai_breakdown_screen.dart b/lib/ui/ai/ai_breakdown_screen.dart
+index 419e3ce..ebbdf90 100644
+--- a/lib/ui/ai/ai_breakdown_screen.dart
++++ b/lib/ui/ai/ai_breakdown_screen.dart
+@@ -136,12 +136,13 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
+         const SizedBox(height: Sp.x6),
+         StateCard(
+           icon: OsIcon.ai,
+-          title: 'Bring your own AI',
++          title: 'Bring deine eigene KI mit',
+           message:
+-              'Add your AI key to enable daily briefings. Your health data '
+-              'stays on this phone — the only network call is to your own '
+-              'provider, with your own key.',
+-          actionLabel: 'Add your AI key',
++              'Füge deinen KI-Schlüssel hinzu, um tägliche Briefings zu '
++              'aktivieren. Deine Gesundheitsdaten bleiben auf diesem Handy — '
++              'der einzige Netzwerkaufruf geht an deinen eigenen Anbieter, '
++              'mit deinem eigenen Schlüssel.',
++          actionLabel: 'KI-Schlüssel hinzufügen',
+           onAction: () async {
+             await Navigator.of(context).push(themedRoute(
+                 (_) => const CoachSettingsScreen(),
+@@ -169,8 +170,8 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
+             Expanded(
+               child: Text(
+                 _morning
+-                    ? 'Reading last night and writing your briefing…'
+-                    : 'Reading your day and writing the recap…',
++                    ? 'Lese die letzte Nacht und schreibe dein Briefing…'
++                    : 'Lese deinen Tag und schreibe den Rückblick…',
+                 style: AppText.bodySoft,
+               ),
+             ),
+@@ -184,12 +185,12 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
+         const SizedBox(height: Sp.x6),
+         StateCard(
+           icon: OsIcon.cancel,
+-          title: 'Couldn\'t reach your AI provider',
++          title: 'Dein KI-Anbieter war nicht erreichbar',
+           message: _error.isEmpty
+-              ? 'Check your connection and try again — nothing is lost, your '
+-                  'data never left the phone.'
++              ? 'Prüfe deine Verbindung und versuche es erneut — nichts ist '
++                  'verloren, deine Daten haben das Handy nie verlassen.'
+               : _error,
+-          actionLabel: 'Try again',
++          actionLabel: 'Erneut versuchen',
+           onAction: _generate,
+         ).dsEnter(),
+       ];
+@@ -247,14 +248,14 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
+ 
+       // Exactly what the model saw — the inputs snapshot as glanceable tiles.
+       if (metrics.isNotEmpty) ...[
+-        const SectionHeader('Based on'),
++        const SectionHeader('Basierend auf'),
+         BentoGrid(items: [for (final m in metrics) BentoItem(m)]),
+         const SizedBox(height: Sp.x4),
+       ],
+ 
+       Center(
+         child: Text(
+-          'Generated $hh:$mm · on-device data · your own AI key',
++          'Erstellt um $hh:$mm · Daten auf dem Gerät · dein eigener KI-Schlüssel',
+           style: AppText.captionMuted,
+         ),
+       ).dsEnter(index: 4),
+@@ -290,21 +291,21 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
+     }
+ 
+     final tiles = <Widget?>[
+-      tile('readiness', 'Readiness', OsIcon.recovery),
++      tile('readiness', 'Tagesform', OsIcon.recovery),
+       tile('hrv_rmssd', 'HRV', OsIcon.hrv, unit: 'ms'),
+-      tile('resting_hr', 'Resting HR', OsIcon.restingHeartRate, unit: 'bpm'),
+-      tile('sleep_min', 'Sleep', OsIcon.sleep, fmt: hm),
+-      tile('sleep_efficiency_pct', 'Efficiency', OsIcon.bedtime, unit: '%'),
+-      tile('deep_min', 'Deep', OsIcon.deepSleep, fmt: hm),
++      tile('resting_hr', 'Ruhepuls', OsIcon.restingHeartRate, unit: 'bpm'),
++      tile('sleep_min', 'Schlaf', OsIcon.sleep, fmt: hm),
++      tile('sleep_efficiency_pct', 'Effizienz', OsIcon.bedtime, unit: '%'),
++      tile('deep_min', 'Tiefschlaf', OsIcon.deepSleep, fmt: hm),
+       tile('rem_min', 'REM', OsIcon.sleep, fmt: hm),
+-      tile('sleep_debt_min', 'Sleep debt', OsIcon.history, fmt: hm),
+-      textTile('bedtime', 'Bedtime', OsIcon.bedtime),
+-      textTile('wake_time', 'Wake', OsIcon.awake),
+-      tile('strain_0_21', 'Strain', OsIcon.bodyStrain),
+-      tile('steps', 'Steps', OsIcon.steps),
+-      tile('calories_total_kcal', 'Calories', OsIcon.calories, unit: 'kcal'),
++      tile('sleep_debt_min', 'Schlafdefizit', OsIcon.history, fmt: hm),
++      textTile('bedtime', 'Schlafenszeit', OsIcon.bedtime),
++      textTile('wake_time', 'Aufwachen', OsIcon.awake),
++      tile('strain_0_21', 'Belastung', OsIcon.bodyStrain),
++      tile('steps', 'Schritte', OsIcon.steps),
++      tile('calories_total_kcal', 'Kalorien', OsIcon.calories, unit: 'kcal'),
+       tile('stress_0_100', 'Stress', OsIcon.stress),
+-      tile('wear_min', 'Wear time', OsIcon.wear, fmt: hm),
++      tile('wear_min', 'Tragezeit', OsIcon.wear, fmt: hm),
+     ];
+     final out = tiles.whereType<Widget>().toList();
+ 
+diff --git a/lib/ui/ai/ai_settings_screen.dart b/lib/ui/ai/ai_settings_screen.dart
+index 83414c8..e54fd14 100644
+--- a/lib/ui/ai/ai_settings_screen.dart
++++ b/lib/ui/ai/ai_settings_screen.dart
+@@ -78,61 +78,62 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
+   Widget build(BuildContext context) {
+     final cfg = context.watch<CoachConfig>();
+     return AppScaffold(
+-      title: 'AI briefings',
+-      subtitle: 'Daily summaries & journaling',
++      title: 'KI-Briefings',
++      subtitle: 'Tägliche Zusammenfassungen & Journal',
+       children: [
+         if (!_loaded)
+           Skeleton.tileRow(rows: 2)
+         else ...[
+           _keyCard(cfg).dsEnter(index: 0),
+           const SizedBox(height: Sp.x6),
+-          const SectionHeader('Daily briefings'),
++          const SectionHeader('Tägliche Briefings'),
+           SurfaceCard(
+             padding: const EdgeInsets.all(Sp.x4),
+                 child: Column(children: [
+                   _toggle(
+-                    title: 'Morning briefing',
++                    title: 'Morgen-Briefing',
+                     subtitle:
+-                        'A short read on last night\'s sleep, recovery and what '
+-                        'it means for the day ahead.',
++                        'Ein kurzer Blick auf Schlaf und Erholung der letzten '
++                        'Nacht — und was das für den Tag bedeutet.',
+                     value: _p.morningEnabled,
+                     onChanged: (v) =>
+                         _update(_p.copyWith(morningEnabled: v)),
+                   ),
+                   if (_p.morningEnabled) ...[
+                     const _HairLine(),
+-                    _timeRow('Time', _p.morningMin,
++                    _timeRow('Uhrzeit', _p.morningMin,
+                         () => _pickTime(_p.morningMin,
+                             (m) => _update(_p.copyWith(morningMin: m)))),
+                   ],
+                   const _HairLine(),
+                   _toggle(
+-                    title: 'Evening recap',
++                    title: 'Abend-Rückblick',
+                     subtitle:
+-                        'How the day landed — strain, movement and stress, in a '
+-                        'few glanceable lines.',
++                        'Wie der Tag gelaufen ist — Belastung, Bewegung und '
++                        'Stress, in wenigen Zeilen auf einen Blick.',
+                     value: _p.eveningEnabled,
+                     onChanged: (v) =>
+                         _update(_p.copyWith(eveningEnabled: v)),
+                   ),
+                   if (_p.eveningEnabled) ...[
+                     const _HairLine(),
+-                    _timeRow('Time', _p.eveningMin,
++                    _timeRow('Uhrzeit', _p.eveningMin,
+                         () => _pickTime(_p.eveningMin,
+                             (m) => _update(_p.copyWith(eveningMin: m)))),
+                   ],
+                 ]),
+               ),
+               const SizedBox(height: Sp.x6),
+-              const SectionHeader('Pre-sleep journaling'),
++              const SectionHeader('Journal vor dem Schlafen'),
+               SurfaceCard(
+                 padding: const EdgeInsets.all(Sp.x4),
+                 child: Column(children: [
+                   _toggle(
+-                    title: 'Bedtime journal prompt',
++                    title: 'Journal-Erinnerung zur Schlafenszeit',
+                     subtitle:
+-                        'A nudge near your bedtime to log the day — by hand or '
+-                        'by chatting with your AI. Fires once a night.',
++                        'Ein Anstoß nahe deiner Schlafenszeit, den Tag '
++                        'festzuhalten — von Hand oder im Chat mit deiner KI. '
++                        'Kommt einmal pro Nacht.',
+                     value: _p.journalEnabled,
+                     onChanged: (v) =>
+                         _update(_p.copyWith(journalEnabled: v)),
+@@ -140,7 +141,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
+                   if (_p.journalEnabled) ...[
+                     const _HairLine(),
+                     _timeRow(
+-                      'Time',
++                      'Uhrzeit',
+                       _p.journalMin >= 0
+                           ? _p.journalMin
+                           : AiPrefs.journalFallbackMin,
+@@ -150,7 +151,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
+                               : AiPrefs.journalFallbackMin,
+                           (m) => _update(_p.copyWith(journalMin: m))),
+                       valueOverride:
+-                          _p.journalMin < 0 ? 'Around bedtime' : null,
++                          _p.journalMin < 0 ? 'Um deine Schlafenszeit' : null,
+                     ),
+                     if (_p.journalMin >= 0) ...[
+                       const _HairLine(),
+@@ -162,7 +163,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
+                               const EdgeInsets.symmetric(vertical: Sp.x3),
+                           child: Row(children: [
+                             Expanded(
+-                                child: Text('Use my bedtime',
++                                child: Text('Meine Schlafenszeit nutzen',
+                                     style: AppText.title)),
+                             AppIcon(OsIcon.history,
+                                 size: 16, color: AppColors.inkSoft),
+@@ -177,9 +178,10 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
+           Padding(
+             padding: const EdgeInsets.symmetric(horizontal: Sp.x2),
+             child: Text(
+-              'Briefings are written from your own on-device data by your '
+-              'own AI provider, using your own key. The only network call '
+-              'is to that provider — nothing goes to an OpenStrap server.',
++              'Briefings werden aus deinen eigenen Daten auf dem Gerät von '
++              'deinem eigenen KI-Anbieter geschrieben, mit deinem eigenen '
++              'Schlüssel. Der einzige Netzwerkaufruf geht an diesen Anbieter '
++              '— nichts geht an einen Server von CM Health.',
+               style: AppText.captionMuted,
+             ),
+           ),
+@@ -203,10 +205,10 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
+         // its green check.
+ 
+         iconColor: ok ? AppColors.positive : AppColors.inkSoft,
+-        title: ok ? 'AI key connected' : 'Add your AI key',
++        title: ok ? 'KI-Schlüssel verbunden' : 'KI-Schlüssel hinzufügen',
+         subtitle: ok
+-            ? 'Using ${cfg.model.isEmpty ? 'your provider' : cfg.model}. Tap to change.'
+-            : 'Briefings and journal chat need your own AI key. Tap to add one.',
++            ? 'Verwendet ${cfg.model.isEmpty ? 'deinen Anbieter' : cfg.model}. Zum Ändern tippen.'
++            : 'Briefings und Journal-Chat brauchen deinen eigenen KI-Schlüssel. Zum Hinzufügen tippen.',
+         trailing:
+             AppIcon(OsIcon.arrowRight, size: 16, color: AppColors.inkMuted),
+       ),
+diff --git a/lib/ui/find/find_band_screen.dart b/lib/ui/find/find_band_screen.dart
+index 7186882..fa62614 100644
+--- a/lib/ui/find/find_band_screen.dart
++++ b/lib/ui/find/find_band_screen.dart
+@@ -150,19 +150,20 @@ class FindBandView extends StatelessWidget {
+   Widget build(BuildContext context) {
+     final t = Theme.of(context);
+     return AppScaffold(
+-      title: 'Find my strap',
+-      subtitle: connected ? 'Buzzing and tracking the signal' : 'Not connected',
++      title: 'Mein Band finden',
++      subtitle: connected ? 'Vibriert und verfolgt das Signal' : 'Nicht verbunden',
+       onBack: onBack,
+       actions: [
+         InfoDot(
+-          title: 'How this works',
+-          body: 'Your strap buzzes while the phone measures how strong its '
+-              'Bluetooth signal is. Stronger usually means closer.\n\n'
+-              'This is signal strength, not distance — we deliberately don\'t '
+-              'show metres. Walls, bedding and your own body all weaken the '
+-              'signal, so a strap under a duvet two feet away can read weaker '
+-              'than one across an empty room. Walk slowly and follow '
+-              '"warmer".',
++          title: 'So funktioniert es',
++          body: 'Dein Band vibriert, während das Handy misst, wie stark sein '
++              'Bluetooth-Signal ist. Stärker heißt meistens näher.\n\n'
++              'Das ist Signalstärke, keine Entfernung — wir zeigen bewusst '
++              'keine Meter an. Wände, Bettzeug und dein eigener Körper '
++              'schwächen das Signal, sodass ein Band unter der Bettdecke in '
++              'Reichweite schwächer wirken kann als eines quer durch einen '
++              'leeren Raum. Geh langsam und folge dem '
++              '„Wärmer".',
+         ),
+       ],
+       children: connected
+@@ -206,8 +207,8 @@ class FindBandView extends StatelessWidget {
+               contentPadding: EdgeInsets.zero,
+               value: autoBuzz,
+               onChanged: onAutoBuzzChanged,
+-              title: const Text('Keep buzzing'),
+-              subtitle: const Text('A pulse every few seconds while you look'),
++              title: const Text('Weiter vibrieren'),
++              subtitle: const Text('Ein Impuls alle paar Sekunden, während du suchst'),
+             ),
+             const SizedBox(height: 4),
+             SizedBox(
+@@ -215,7 +216,7 @@ class FindBandView extends StatelessWidget {
+               child: FilledButton.icon(
+                 onPressed: onBuzzNow,
+                 icon: const Icon(Icons.vibration),
+-                label: const Text('Buzz now'),
++                label: const Text('Jetzt vibrieren'),
+               ),
+             ),
+           ],
+@@ -236,11 +237,12 @@ class _Disconnected extends StatelessWidget {
+     // explain that than to show a hopeful empty gauge forever.
+     return const StateCard(
+       icon: OsIcon.bluetooth,
+-      title: 'Can\'t reach your strap',
+-      message: 'Finding it needs a live connection — that\'s how we buzz it '
+-          'and how we measure the signal.\n\nIf it\'s in range it should '
+-          'reconnect on its own in a moment. If nothing happens it\'s probably '
+-          'out of range, out of battery, or still connected to another phone.',
++      title: 'Dein Band ist nicht erreichbar',
++      message: 'Zum Finden braucht es eine aktive Verbindung — so lassen wir '
++          'es vibrieren und messen das Signal.\n\nWenn es in Reichweite ist, '
++          'sollte es sich gleich von selbst wieder verbinden. Passiert nichts, '
++          'ist es vermutlich außer Reichweite, der Akku ist leer, oder es ist '
++          'noch mit einem anderen Handy verbunden.',
+     );
+   }
+ }
+diff --git a/lib/ui/import/import_screen.dart b/lib/ui/import/import_screen.dart
+index 33ee741..6a50ba4 100644
+--- a/lib/ui/import/import_screen.dart
++++ b/lib/ui/import/import_screen.dart
+@@ -78,7 +78,7 @@ class _ImportScreenState extends State<ImportScreen> {
+       // else is worth showing.
+       if (e.code != 'already_active') {
+         _set(() {
+-          _error = 'Could not open the file picker: ${e.message ?? e.code}';
++          _error = 'Die Dateiauswahl konnte nicht geöffnet werden: ${e.message ?? e.code}';
+           _result = null;
+           _warning = null;
+         });
+@@ -86,7 +86,7 @@ class _ImportScreenState extends State<ImportScreen> {
+       return const [];
+     } catch (e) {
+       _set(() {
+-        _error = 'Could not open the file picker: $e';
++        _error = 'Die Dateiauswahl konnte nicht geöffnet werden: $e';
+         _result = null;
+         _warning = null;
+       });
+@@ -97,10 +97,10 @@ class _ImportScreenState extends State<ImportScreen> {
+   }
+ 
+   Future<void> _run(String label, Future<int> Function() task,
+-      {String unit = 'day'}) async {
++      {String unit = 'Tag', String unitPlural = 'Tage'}) async {
+     _set(() {
+       _busy = true;
+-      _progress = 'Importing…';
++      _progress = 'Importiere…';
+       _result = null;
+       _warning = null;
+       _error = null;
+@@ -110,13 +110,13 @@ class _ImportScreenState extends State<ImportScreen> {
+       _set(() {
+         _busy = false;
+         _progress = null;
+-        _result = '$label: imported $n $unit${n == 1 ? '' : 's'}.';
++        _result = '$label: $n ${n == 1 ? unit : unitPlural} importiert.';
+       });
+     } catch (e) {
+       _set(() {
+         _busy = false;
+         _progress = null;
+-        _error = '$label failed: $e';
++        _error = '$label fehlgeschlagen: $e';
+       });
+     }
+   }
+@@ -126,13 +126,16 @@ class _ImportScreenState extends State<ImportScreen> {
+     final paths = await _pick();
+     if (paths.isEmpty) return;
+     await _run('NOOP', () => app.importNoopCsv(paths.first,
+-        onProgress: (d) => _set(() => _progress = 'Re-deriving day $d…')));
++        onProgress: (d) => _set(() => _progress = 'Berechne Tag $d neu…')));
+     final stranded = app.lastNoopImport?.strandedDates ?? const <String>{};
+     if (stranded.isNotEmpty && _error == null) {
+       final shown = (stranded.toList()..sort()).take(3).join(', ');
+-      _set(() => _warning = '${stranded.length} day'
+-          '${stranded.length == 1 ? '' : 's'} came through out of order and '
+-          'could not be re-analysed ($shown${stranded.length > 3 ? '…' : ''}).');
++      _set(() => _warning = stranded.length == 1
++          ? '1 Tag kam in falscher Reihenfolge an und konnte nicht neu '
++              'analysiert werden ($shown).'
++          : '${stranded.length} Tage kamen in falscher Reihenfolge an und '
++              'konnten nicht neu analysiert werden '
++              '($shown${stranded.length > 3 ? '…' : ''}).');
+     }
+   }
+ 
+@@ -140,8 +143,8 @@ class _ImportScreenState extends State<ImportScreen> {
+     final app = context.read<AppState>();
+     final paths = await _pick();
+     if (paths.isEmpty) return;
+-    await _run('Edge backup', () => app.importEdgeBackup(paths.first),
+-        unit: 'row');
++    await _run('CM Health-Backup', () => app.importEdgeBackup(paths.first),
++        unit: 'Zeile', unitPlural: 'Zeilen');
+   }
+ 
+   Future<void> _importWhoop() async {
+@@ -149,7 +152,7 @@ class _ImportScreenState extends State<ImportScreen> {
+     final paths = await _pick(multiple: true);
+     if (paths.isEmpty) return;
+     await _run('WHOOP', () => app.importWhoopCsvs(paths,
+-        onProgress: (d) => _set(() => _progress = 'Importing day $d…')));
++        onProgress: (d) => _set(() => _progress = 'Importiere Tag $d…')));
+   }
+ 
+   /// Finish: if still in onboarding (no choice made yet) mark it done so the gate
+@@ -165,30 +168,30 @@ class _ImportScreenState extends State<ImportScreen> {
+   @override
+   Widget build(BuildContext context) {
+     return AppScaffold(
+-      title: 'Import data',
+-      subtitle: 'Bring history from another source',
++      title: 'Daten importieren',
++      subtitle: 'Hole Verlauf aus einer anderen Quelle',
+       children: [
+         ...dsStaggered([
+           ImportOptionCard(
+             icon: OsIcon.heartRate,
+-            title: 'Import from NOOP',
+-            body: 'A .noopbak backup or the raw 1 Hz CSV — re-analyzed '
+-                'end-to-end on this phone.',
++            title: 'Aus NOOP importieren',
++            body: 'Ein .noopbak-Backup oder die rohe 1-Hz-CSV — komplett auf '
++                'diesem Handy neu analysiert.',
+             onTap: _locked ? null : _importNoop,
+           ),
+           const SizedBox(height: Sp.x3),
+           ImportOptionCard(
+             icon: OsIcon.server,
+-            title: 'Import from Edge backup',
+-            body: 'A .db exported from another OpenStrap device.',
++            title: 'Aus CM Health-Backup importieren',
++            body: 'Eine .db, exportiert von einem anderen CM Health-Gerät.',
+             onTap: _locked ? null : _importEdge,
+           ),
+           const SizedBox(height: Sp.x3),
+           ImportOptionCard(
+             icon: OsIcon.history,
+-            title: 'Import from WHOOP',
++            title: 'Aus WHOOP importieren',
+             tag: 'BETA',
+-            body: 'WHOOP export CSVs — derived summaries only.',
++            body: 'WHOOP-Export-CSVs — nur abgeleitete Zusammenfassungen.',
+             onTap: _locked ? null : _importWhoop,
+           ),
+         ]),
+@@ -198,20 +201,22 @@ class _ImportScreenState extends State<ImportScreen> {
+           children: [
+             Expanded(
+               child: Text(
+-                'Imported days sit alongside your band data; band data wins '
+-                'on overlap.',
++                'Importierte Tage stehen neben deinen Band-Daten; bei '
++                'Überschneidungen gewinnen die Band-Daten.',
+                 style: AppText.captionMuted,
+               ),
+             ),
+             const InfoDot(
+-              title: 'How imports work',
++              title: 'So funktionieren Importe',
+               bullets: [
+-                'NOOP CSVs carry raw 1 Hz sensor data — they get the same '
+-                    'full analysis as a live sync.',
+-                'Edge backups merge another device\'s complete history.',
+-                'WHOOP exports have no raw 1 Hz, so those days import as '
+-                    'derived summaries.',
+-                'New band syncs always take priority where days overlap.',
++                'NOOP-CSVs enthalten rohe 1-Hz-Sensordaten — sie bekommen '
++                    'dieselbe vollständige Analyse wie eine Live-Synchronisierung.',
++                'CM Health-Backups führen den kompletten Verlauf eines '
++                    'anderen Geräts zusammen.',
++                'WHOOP-Exporte haben keine rohen 1-Hz-Daten, diese Tage '
++                    'werden als abgeleitete Zusammenfassungen importiert.',
++                'Neue Band-Synchronisierungen haben bei Überschneidungen '
++                    'immer Vorrang.',
+               ],
+             ),
+           ],
+@@ -230,7 +235,7 @@ class _ImportScreenState extends State<ImportScreen> {
+               const SizedBox(width: Sp.x3),
+               Expanded(
+                   child:
+-                      Text(_progress ?? 'Importing…', style: AppText.bodySoft)),
++                      Text(_progress ?? 'Importiere…', style: AppText.bodySoft)),
+             ]),
+           ),
+         if (_warning != null) ...[
+@@ -266,7 +271,7 @@ class _ImportScreenState extends State<ImportScreen> {
+             width: double.infinity,
+             child: FilledButton(
+               onPressed: _busy ? null : _continue,
+-              child: const Text('Continue'),
++              child: const Text('Weiter'),
+             ),
+           ),
+           const SizedBox(height: Sp.x2),
+@@ -283,7 +288,7 @@ class _ImportScreenState extends State<ImportScreen> {
+                         _result = null;
+                         _warning = null;
+                       }),
+-              child: const Text('Import another file'),
++              child: const Text('Weitere Datei importieren'),
+             ),
+           ),
+         ],
+diff --git a/lib/ui/insights/coach_cards.dart b/lib/ui/insights/coach_cards.dart
+index 315e118..d8dbbc0 100644
+--- a/lib/ui/insights/coach_cards.dart
++++ b/lib/ui/insights/coach_cards.dart
+@@ -46,7 +46,7 @@ String _dur(num sec) {
+ String? napCreditCaption(num? napCreditMin) {
+   final m = napCreditMin?.round();
+   if (m == null || m <= 0) return null;
+-  return '−${_dur(m * 60)} credited from today\'s nap';
++  return '−${_dur(m * 60)} angerechnet durch dein heutiges Nickerchen';
+ }
+ 
+ /// Caption for the strain bonus ALREADY folded into `sleep_coach.need_sec`.
+@@ -66,7 +66,7 @@ String? napCreditCaption(num? napCreditMin) {
+ String? strainBonusCaption(num? strainBonusMin) {
+   final m = strainBonusMin?.round();
+   if (m == null || m <= 0) return null;
+-  return '+${_dur(m * 60)} added for today\'s strain';
++  return '+${_dur(m * 60)} zusätzlich wegen deiner heutigen Belastung';
+ }
+ 
+ Map<String, dynamic>? _val(Object? metric) {
+@@ -90,9 +90,9 @@ String? alarmStatusCaption({
+   required bool pending,
+   required bool unconfirmed,
+ }) {
+-  if (confirmed) return 'Alarm set ✓';
+-  if (pending) return 'Setting alarm…';
+-  if (unconfirmed) return 'Alarm sent, waiting for the strap to confirm.';
++  if (confirmed) return 'Wecker gestellt ✓';
++  if (pending) return 'Wecker wird gestellt…';
++  if (unconfirmed) return 'Wecker gesendet, warte auf Bestätigung vom Band.';
+   return null;
+ }
+ 
+@@ -134,7 +134,7 @@ class _SleepCoachCardState extends State<SleepCoachCard> {
+   Future<void> _setAlarm(double wakeMin) async {
+     final app = context.read<AppState>();
+     if (!app.isConnected) {
+-      _snack('Connect your strap to set the band alarm.');
++      _snack('Verbinde dein Band, um den Wecker zu stellen.');
+       return;
+     }
+     // Next occurrence of the wake clock-time (today if still ahead, else tomorrow).
+@@ -144,9 +144,9 @@ class _SleepCoachCardState extends State<SleepCoachCard> {
+     if (!when.isAfter(now)) when = when.add(const Duration(days: 1));
+     try {
+       await app.setAlarm(when);
+-      _snack('Band alarm set for ${_hhmm(wakeMin)} — confirming with the strap…');
++      _snack('Band-Wecker gestellt für ${_hhmm(wakeMin)} — Bestätigung vom Band läuft…');
+     } catch (e) {
+-      _snack("Couldn't set alarm: $e");
++      _snack('Wecker konnte nicht gestellt werden: $e');
+     }
+   }
+ 
+@@ -179,9 +179,9 @@ class _SleepCoachCardState extends State<SleepCoachCard> {
+       return _CoachEmpty(
+         icon: OsIcon.sleep,
+         accent: AppColors.loadDetraining,
+-        title: 'Sleep Coach',
+-        body: 'A few more nights of sleep data and your personal sleep need, '
+-            'bedtime and wake time will appear here.',
++        title: 'Schlaf-Coach',
++        body: 'Noch ein paar Nächte Schlafdaten, dann erscheinen hier dein '
++            'persönlicher Schlafbedarf, deine Schlafenszeit und Weckzeit.',
+       );
+     }
+     final needSec = (need['need_sec'] as num?) ?? 0;
+@@ -199,8 +199,8 @@ class _SleepCoachCardState extends State<SleepCoachCard> {
+     // the bedtime/wake breakdown and the "Set band alarm" action are one
+     // tap away rather than permanently occupying space.
+     final needLine = pct == null
+-        ? 'Tonight you need ${_dur(needSec)}'
+-        : 'Tonight you need ${_dur(needSec)} · $pct% of need';
++        ? 'Heute Nacht brauchst du ${_dur(needSec)}'
++        : 'Heute Nacht brauchst du ${_dur(needSec)} · $pct% des Bedarfs';
+ 
+     // Naps are already SUBTRACTED from `need_sec`. Showing the adjustment is
+     // the difference between a number the user can reason about and one that
+@@ -218,9 +218,9 @@ class _SleepCoachCardState extends State<SleepCoachCard> {
+         Row(children: [
+           const OsAppIcon(OsIcon.sleep, size: 34),
+           const SizedBox(width: Sp.x2),
+-          Text('SLEEP COACH', style: AppText.overline),
++          Text('SCHLAF-COACH', style: AppText.overline),
+           const Spacer(),
+-          if (pct != null) Tag('$pct% of need', color: accent),
++          if (pct != null) Tag('$pct% des Bedarfs', color: accent),
+         ]),
+         const SizedBox(height: Sp.x3),
+         // Only offer the expand affordance when there's actually detail
+@@ -240,19 +240,19 @@ class _SleepCoachCardState extends State<SleepCoachCard> {
+         else
+           Disclosure(
+             summary: needLine,
+-            expandLabel: 'Bedtime & alarm',
+-            collapseLabel: 'Hide',
++            expandLabel: 'Schlafenszeit & Wecker',
++            collapseLabel: 'Ausblenden',
+             summaryWidget: _needSummary(needSec, pct, accent),
+             child: Column(
+               crossAxisAlignment: CrossAxisAlignment.start,
+               mainAxisSize: MainAxisSize.min,
+               children: [
+                 if (bedMin != null)
+-                  _row(OsIcon.sleep, accent, 'Recommended bedtime',
++                  _row(OsIcon.sleep, accent, 'Empfohlene Schlafenszeit',
+                       _hhmm(bedMin)),
+                 if (wakeMin != null)
+                   _row(OsIcon.notifications, AppColors.coral,
+-                      'Wake (cycle-aligned)', _hhmm(wakeMin)),
++                      'Aufwachen (zyklusoptimiert)', _hhmm(wakeMin)),
+                 if (wakeMin != null) ...[
+                   const SizedBox(height: Sp.x3),
+                   SizedBox(
+@@ -261,7 +261,7 @@ class _SleepCoachCardState extends State<SleepCoachCard> {
+                       onPressed: () => _setAlarm(wakeMin.toDouble()),
+                       icon: const AppIcon(OsIcon.notifications,
+                           size: 16, color: Colors.white),
+-                      label: Text('Set band alarm for ${_hhmm(wakeMin)}'),
++                      label: Text('Band-Wecker stellen für ${_hhmm(wakeMin)}'),
+                     ),
+                   ),
+                   ?switch (_alarmCaption(context.read<AppState>())) {
+@@ -287,7 +287,7 @@ class _SleepCoachCardState extends State<SleepCoachCard> {
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+             children: [
+-              Text('Tonight you need', style: AppText.captionMuted),
++              Text('Heute Nacht brauchst du', style: AppText.captionMuted),
+               const SizedBox(height: 2),
+               Text(_dur(needSec), style: AppText.h2.copyWith(color: accent)),
+             ],
+@@ -354,10 +354,10 @@ class _StrainCoachCardState extends State<StrainCoachCard> {
+     'push': AppColors.coral,
+   };
+   static const _bandLabel = {
+-    'recover': 'Recover',
+-    'ease': 'Take it easy',
+-    'maintain': 'Maintain',
+-    'push': 'Push',
++    'recover': 'Erholen',
++    'ease': 'Locker angehen',
++    'maintain': 'Halten',
++    'push': 'Pushen',
+   };
+ 
+   @override
+@@ -374,7 +374,7 @@ class _StrainCoachCardState extends State<StrainCoachCard> {
+         Row(children: [
+           const OsAppIcon(OsIcon.bodyStrain, size: 34),
+           const SizedBox(width: Sp.x2),
+-          Text('STRAIN COACH', style: AppText.overline),
++          Text('BELASTUNGS-COACH', style: AppText.overline),
+           const Spacer(),
+           Tag(_bandLabel[band] ?? band, color: accent),
+         ]),
+@@ -384,7 +384,7 @@ class _StrainCoachCardState extends State<StrainCoachCard> {
+           const SizedBox(width: Sp.x2),
+           Padding(
+             padding: const EdgeInsets.only(bottom: 6),
+-            child: Text('target strain today', style: AppText.captionMuted),
++            child: Text('Belastungsziel heute', style: AppText.captionMuted),
+           ),
+         ]),
+         if (rationale.isNotEmpty) ...[
+@@ -438,9 +438,9 @@ class _FitnessAgeCardState extends State<FitnessAgeCard> {
+       return _CoachEmpty(
+         icon: OsIcon.heartRate,
+         accent: AppColors.good,
+-        title: 'Fitness age',
+-        body: 'Your VO₂max and physiological age build from resting heart rate, '
+-            'HRV, sleep and activity — keep wearing the strap.',
++        title: 'Fitnessalter',
++        body: 'Dein VO₂max und dein physiologisches Alter entstehen aus '
++            'Ruhepuls, HRV, Schlaf und Aktivität — trag das Band einfach weiter.',
+       );
+     }
+     final pa = (_age?['physio_age'] as num?)?.round();
+@@ -453,7 +453,7 @@ class _FitnessAgeCardState extends State<FitnessAgeCard> {
+         Row(children: [
+           const OsAppIcon(OsIcon.vo2max, size: 34),
+           const SizedBox(width: Sp.x2),
+-          Text('FITNESS AGE', style: AppText.overline),
++          Text('FITNESSALTER', style: AppText.overline),
+         ]),
+         const SizedBox(height: Sp.x3),
+         Row(children: [
+@@ -461,14 +461,14 @@ class _FitnessAgeCardState extends State<FitnessAgeCard> {
+             Expanded(
+               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                 Text('$pa', style: AppText.h1.copyWith(color: accent)),
+-                Text('physiological age', style: AppText.captionMuted),
++                Text('physiologisches Alter', style: AppText.captionMuted),
+                 if (delta != null) ...[
+                   const SizedBox(height: 4),
+                   Text(
+                     delta == 0
+-                        ? 'on par with your age'
+-                        : '${delta.abs().toStringAsFixed(1)} years '
+-                            '${younger ? 'younger' : 'older'} than your age',
++                        ? 'auf Höhe deines Alters'
++                        : '${delta.abs().toStringAsFixed(1)} Jahre '
++                            '${younger ? 'jünger' : 'älter'} als dein Alter',
+                     style: AppText.caption.copyWith(color: accent),
+                   ),
+                 ],
+@@ -483,7 +483,7 @@ class _FitnessAgeCardState extends State<FitnessAgeCard> {
+             ]),
+         ]),
+         const SizedBox(height: Sp.x2),
+-        Text('An estimate from your own data — directional, not a lab test.',
++        Text('Eine Schätzung aus deinen eigenen Daten — als Richtwert, kein Labortest.',
+             style: AppText.captionMuted),
+       ]),
+     );
+@@ -538,15 +538,15 @@ class _PerformanceAssessmentCardState
+         Row(children: [
+           AppIcon(OsIcon.activity, size: 16, color: AppColors.coral),
+           const SizedBox(width: Sp.x2),
+-          Text('PERFORMANCE ASSESSMENT', style: AppText.overline),
++          Text('LEISTUNGSANALYSE', style: AppText.overline),
+         ]),
+         const SizedBox(height: Sp.x2),
+-        Text('How your logged behaviours move your numbers', style: AppText.captionMuted),
++        Text('Wie deine erfassten Gewohnheiten deine Werte bewegen', style: AppText.captionMuted),
+         const SizedBox(height: Sp.x3),
+         for (final i in top) _insightRow(i),
+         const SizedBox(height: Sp.x2),
+-        Text('Association from your journal, not proof of cause. The more you log, '
+-            'the sharper this gets.', style: AppText.captionMuted),
++        Text('Zusammenhang aus deinem Journal, kein Beweis für eine Ursache. Je mehr '
++            'du einträgst, desto schärfer wird das Bild.', style: AppText.captionMuted),
+       ]),
+     );
+   }
+diff --git a/lib/ui/kit/charts.dart b/lib/ui/kit/charts.dart
+index 9452772..1856894 100644
+--- a/lib/ui/kit/charts.dart
++++ b/lib/ui/kit/charts.dart
+@@ -374,7 +374,7 @@ class _TimeSeriesChartState extends State<TimeSeriesChart> {
+       return SizedBox(
+         height: widget.height,
+         child: Center(
+-          child: Text('Not enough data yet', style: AppText.captionMuted),
++          child: Text('Noch nicht genug Daten', style: AppText.captionMuted),
+         ),
+       );
+     }
+@@ -752,10 +752,10 @@ class HrCurveWithChips extends StatelessWidget {
+       runSpacing: Sp.x1,
+       children: [
+         if (showNowChip)
+-          StatusChip('Now ${latest.y.round()}', tone: ChipTone.accent),
+-        StatusChip('Peak ${peak.y.round()}',
++          StatusChip('Jetzt ${latest.y.round()}', tone: ChipTone.accent),
++        StatusChip('Max ${peak.y.round()}',
+             tone: showNowChip ? ChipTone.neutral : ChipTone.accent),
+-        StatusChip('Low ${low.y.round()}'),
++        StatusChip('Min ${low.y.round()}'),
+       ],
+     );
+     final chart = TimeSeriesChart(
+@@ -1085,7 +1085,7 @@ class FormChart extends StatelessWidget {
+       return SizedBox(
+         height: height,
+         child: Center(
+-          child: Text('Not enough data yet', style: AppText.captionMuted),
++          child: Text('Noch nicht genug Daten', style: AppText.captionMuted),
+         ),
+       );
+     }
+diff --git a/lib/ui/kit/kit.dart b/lib/ui/kit/kit.dart
+index 8c0700c..932d31c 100644
+--- a/lib/ui/kit/kit.dart
++++ b/lib/ui/kit/kit.dart
+@@ -436,7 +436,7 @@ class BaselineDeltaChip extends StatelessWidget {
+       ),
+       child: Text(
+         '$sign$shownMag${unit.isNotEmpty ? ' $unit' : ''}'
+-        '${showVsNormal ? ' vs normal' : (vsLabel != null ? ' $vsLabel' : '')}',
++        '${showVsNormal ? ' vs. normal' : (vsLabel != null ? ' $vsLabel' : '')}',
+         style: AppText.caption.copyWith(color: c, fontWeight: FontWeight.w700),
+       ),
+     );
+@@ -460,7 +460,7 @@ class AppearanceSelector extends StatelessWidget {
+       AppThemeChoice.dark => 2,
+     };
+     final toggle = SegToggle(
+-      options: const ['System', 'Light', 'Dark'],
++      options: const ['System', 'Hell', 'Dunkel'],
+       index: idx,
+       onChanged: (i) {
+         final next = switch (i) {
+@@ -480,12 +480,12 @@ class AppearanceSelector extends StatelessWidget {
+     );
+     if (!labeled) return toggle;
+     final desc = ctrl.choice == AppThemeChoice.system
+-        ? 'Following your phone — ${ctrl.isDark ? 'Ember on Char' : 'Ember on Paper'}'
++        ? 'Folgt deinem Handy — ${ctrl.isDark ? 'Ember on Char' : 'Ember on Paper'}'
+         : 'Ember on ${ctrl.isDark ? 'Char' : 'Paper'}';
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.start,
+       children: [
+-        Text('APPEARANCE', style: AppText.overline),
++        Text('DARSTELLUNG', style: AppText.overline),
+         const SizedBox(height: Sp.x3),
+         Align(alignment: Alignment.centerLeft, child: toggle),
+         const SizedBox(height: Sp.x2),
+@@ -682,7 +682,7 @@ bool detailedAvailable(String ymd) {
+ /// Shown in place of a minute-level chart for dates older than the detail window.
+ class DetailRetentionNote extends StatelessWidget {
+   final String what; // e.g. 'hypnogram', 'minute-by-minute heart rate'
+-  const DetailRetentionNote({super.key, this.what = 'minute-by-minute detail'});
++  const DetailRetentionNote({super.key, this.what = 'Minutenwerte'});
+   @override
+   Widget build(BuildContext context) => ProCard(
+     child: Row(
+@@ -691,8 +691,8 @@ class DetailRetentionNote extends StatelessWidget {
+         const SizedBox(width: Sp.x3),
+         Expanded(
+           child: Text(
+-            'Detailed $what is kept for the last $kDetailWindowDays days. '
+-            'For older dates we show your daily summary.',
++            'Details ($what) werden für die letzten $kDetailWindowDays Tage aufbewahrt. '
++            'Für ältere Tage zeigen wir deine Tageszusammenfassung.',
+             style: AppText.caption.copyWith(color: AppColors.inkSoft),
+           ),
+         ),
+diff --git a/lib/ui/kit/route_map.dart b/lib/ui/kit/route_map.dart
+index 767e38b..21e710c 100644
+--- a/lib/ui/kit/route_map.dart
++++ b/lib/ui/kit/route_map.dart
+@@ -475,7 +475,7 @@ class RouteMapScreen extends StatelessWidget {
+ /// A compact HR-zone colour key for the route map.
+ class RouteZoneLegend extends StatelessWidget {
+   const RouteZoneLegend({super.key});
+-  static const _labels = ['Rest', 'Warm', 'Fat', 'Aero', 'Thr', 'Max'];
++  static const _labels = ['Ruhe', 'Warm', 'Fett', 'Aero', 'Schwelle', 'Max'];
+ 
+   @override
+   Widget build(BuildContext context) {
+@@ -613,11 +613,11 @@ class _RouteCardState extends State<RouteCard> {
+               Expanded(
+                 child: _RouteStat(
+                   units.distance(route.distanceMeters),
+-                  'distance',
++                  'Distanz',
+                 ),
+               ),
+-              Expanded(child: _RouteStat(avgPace, 'avg pace')),
+-              Expanded(child: _RouteStat(bestPaceText, 'best pace')),
++              Expanded(child: _RouteStat(avgPace, 'Ø Pace')),
++              Expanded(child: _RouteStat(bestPaceText, 'Beste Pace')),
+             ],
+           ),
+           // Speed is only meaningful when the platform actually reported it
+@@ -628,10 +628,10 @@ class _RouteCardState extends State<RouteCard> {
+             Row(
+               children: [
+                 Expanded(
+-                  child: _RouteStat(units.speed(avgSpeedMps), 'avg speed'),
++                  child: _RouteStat(units.speed(avgSpeedMps), 'Ø Tempo'),
+                 ),
+                 Expanded(
+-                  child: _RouteStat(units.speed(maxSpeedMps), 'max speed'),
++                  child: _RouteStat(units.speed(maxSpeedMps), 'Max. Tempo'),
+                 ),
+                 const Expanded(child: SizedBox.shrink()),
+               ],
+@@ -691,7 +691,7 @@ class SplitsTable extends StatelessWidget {
+             children: [
+               Text('SPLITS', style: AppText.overline),
+               const Spacer(),
+-              Text('pace ${units.paceUnit} · bpm', style: AppText.captionMuted),
++              Text('Pace ${units.paceUnit} · bpm', style: AppText.captionMuted),
+             ],
+           ),
+           const SizedBox(height: Sp.x3),
+diff --git a/lib/ui/labs/lab_entry_sheet.dart b/lib/ui/labs/lab_entry_sheet.dart
+index 194a7d9..4908f19 100644
+--- a/lib/ui/labs/lab_entry_sheet.dart
++++ b/lib/ui/labs/lab_entry_sheet.dart
+@@ -100,12 +100,12 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+   Future<void> _save() async {
+     final key = _markerKey;
+     if (key == null) {
+-      setState(() => _error = 'Pick a marker');
++      setState(() => _error = 'Wähle einen Marker');
+       return;
+     }
+     final value = double.tryParse(_valueCtrl.text.trim().replaceAll(',', '.'));
+     if (value == null) {
+-      setState(() => _error = 'Enter the number from your report');
++      setState(() => _error = 'Gib die Zahl aus deinem Befund ein');
+       return;
+     }
+     final marker = labMarker(key, custom: widget.custom);
+@@ -135,12 +135,12 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+     final label = _customNameCtrl.text.trim();
+     final unit = _customUnitCtrl.text.trim();
+     if (label.isEmpty || unit.isEmpty) {
+-      setState(() => _error = 'A name and a unit, both from your report');
++      setState(() => _error = 'Ein Name und eine Einheit, beide aus deinem Befund');
+       return;
+     }
+     final key = customLabMarkerKey(label);
+     if (key == 'custom_') {
+-      setState(() => _error = 'Use at least one letter or number');
++      setState(() => _error = 'Verwende mindestens einen Buchstaben oder eine Zahl');
+       return;
+     }
+     // "Lp(a)", "Lp a" and "LP-A" all slug to the same key, and the write
+@@ -150,7 +150,7 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+     final clash = widget.custom.where((m) => m.key == key).firstOrNull;
+     if (clash != null && (clash.label != label || clash.unit != unit)) {
+       setState(
+-        () => _error = 'You already track "${clash.label}" (${clash.unit})',
++        () => _error = 'Du trackst bereits "${clash.label}" (${clash.unit})',
+       );
+       return;
+     }
+@@ -194,14 +194,14 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+                 children: [
+                   Expanded(
+                     child: Text(
+-                      _isEdit ? 'Edit result' : 'Add a result',
++                      _isEdit ? 'Ergebnis bearbeiten' : 'Ergebnis hinzufügen',
+                       style: AppText.h2,
+                     ),
+                   ),
+                   if (_isEdit)
+                     Semantics(
+                       button: true,
+-                      label: 'Delete this result',
++                      label: 'Dieses Ergebnis löschen',
+                       child: Pressable(
+                         pressedScale: 0.9,
+                         onTap: _delete,
+@@ -247,7 +247,7 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+                 width: double.infinity,
+                 child: FilledButton(
+                   onPressed: _definingCustom ? _saveCustomMarker : _save,
+-                  child: Text(_definingCustom ? 'Add marker' : 'Save'),
++                  child: Text(_definingCustom ? 'Marker hinzufügen' : 'Speichern'),
+                 ),
+               ),
+             ],
+@@ -295,7 +295,7 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+           Icon(Icons.add_rounded, size: 18, color: AppColors.accent),
+           const SizedBox(width: Sp.x1),
+           Text(
+-            'Something else',
++            'Etwas anderes',
+             style: AppText.label.copyWith(color: AppColors.accent),
+           ),
+         ],
+@@ -308,7 +308,7 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+     for (final e in labMarkersByCategory().entries) {
+       out[e.key.label] = e.value;
+     }
+-    if (widget.custom.isNotEmpty) out['Yours'] = widget.custom;
++    if (widget.custom.isNotEmpty) out['Deine'] = widget.custom;
+     return out;
+   }
+ 
+@@ -327,7 +327,7 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+             autofocus: !_isEdit,
+             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+             style: AppText.body,
+-            decoration: _fieldDecoration('Value'),
++            decoration: _fieldDecoration('Wert'),
+           ),
+         ),
+         const SizedBox(width: Sp.x3),
+@@ -338,7 +338,7 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+       ],
+     ),
+     const SizedBox(height: Sp.x4),
+-    Text('Date drawn', style: AppText.label.copyWith(color: AppColors.inkSoft)),
++    Text('Abnahmedatum', style: AppText.label.copyWith(color: AppColors.inkSoft)),
+     const SizedBox(height: Sp.x2),
+     Pressable(
+       pressedScale: 0.96,
+@@ -360,7 +360,7 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+     TextField(
+       controller: _noteCtrl,
+       style: AppText.body,
+-      decoration: _fieldDecoration('Note (optional)'),
++      decoration: _fieldDecoration('Notiz (optional)'),
+     ),
+   ];
+ 
+@@ -370,7 +370,7 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+   List<Widget> _valueFieldsForDeletedMarker() => _valueFields(
+     LabMarker(
+       key: _markerKey ?? '',
+-      label: _markerKey ?? 'Result',
++      label: _markerKey ?? 'Ergebnis',
+       unit: (widget.existing?['unit'] as String?) ?? '',
+       category: LabCategory.blood,
+       decimals: 2,
+@@ -380,9 +380,9 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+ 
+   List<Widget> _customFields() => [
+     Text(
+-      'Add a marker this app does not know about. It is stored with the unit '
+-      'you give it and shown without a reference range — the app will not '
+-      'invent one.',
++      'Füge einen Marker hinzu, den diese App nicht kennt. Er wird mit der '
++      'Einheit gespeichert, die du angibst, und ohne Referenzbereich '
++      'angezeigt — die App erfindet keinen.',
+       style: AppText.caption.copyWith(color: AppColors.inkMuted),
+     ),
+     const SizedBox(height: Sp.x4),
+@@ -391,13 +391,13 @@ class _LabEntrySheetState extends State<_LabEntrySheet> {
+       autofocus: true,
+       textCapitalization: TextCapitalization.sentences,
+       style: AppText.body,
+-      decoration: _fieldDecoration('Name, e.g. Lp(a)'),
++      decoration: _fieldDecoration('Name, z. B. Lp(a)'),
+     ),
+     const SizedBox(height: Sp.x3),
+     TextField(
+       controller: _customUnitCtrl,
+       style: AppText.body,
+-      decoration: _fieldDecoration('Unit, e.g. nmol/L'),
++      decoration: _fieldDecoration('Einheit, z. B. nmol/L'),
+     ),
+   ];
+ 
+diff --git a/lib/ui/labs/labs_screen.dart b/lib/ui/labs/labs_screen.dart
+index e0c9ec2..672e86b 100644
+--- a/lib/ui/labs/labs_screen.dart
++++ b/lib/ui/labs/labs_screen.dart
+@@ -109,11 +109,11 @@ class _LabsScreenState extends State<LabsScreen> {
+         .select<AppState, String?>((a) => a.user?['sex'] as String?)
+         ?.toLowerCase();
+     return AppScaffold(
+-      title: 'Labs',
++      title: 'Laborwerte',
+       actions: [
+         Semantics(
+           button: true,
+-          label: 'Add a lab result',
++          label: 'Laborergebnis hinzufügen',
+           child: Pressable(
+             pressedScale: 0.94,
+             onTap: _add,
+@@ -132,7 +132,7 @@ class _LabsScreenState extends State<LabsScreen> {
+                   Icon(Icons.add_rounded, size: 18, color: AppColors.accent),
+                   const SizedBox(width: Sp.x1),
+                   Text(
+-                    'Add',
++                    'Hinzufügen',
+                     style: AppText.label.copyWith(color: AppColors.accent),
+                   ),
+                 ],
+@@ -163,10 +163,10 @@ class _LabsScreenState extends State<LabsScreen> {
+             else if (grouped.isEmpty)
+               StateCard(
+                 icon: OsIcon.ecgRhythm,
+-                title: 'No results yet',
+-                message: 'Add a blood test and it stays on this phone, next to '
+-                    'everything the band measures.',
+-                actionLabel: 'Add a result',
++                title: 'Noch keine Ergebnisse',
++                message: 'Füge einen Bluttest hinzu — er bleibt auf diesem '
++                    'Handy, direkt neben allem, was das Band misst.',
++                actionLabel: 'Ergebnis hinzufügen',
+                 onAction: _add,
+               )
+             else ...[
+@@ -183,9 +183,10 @@ class _LabsScreenState extends State<LabsScreen> {
+                 ),
+               const SizedBox(height: Sp.x3),
+               Text(
+-                'Ranges shown are typical adult reference intervals, for '
+-                'context only. Every laboratory publishes its own, and the one '
+-                'printed on your report is the one that applies to you.',
++                'Die gezeigten Bereiche sind typische Referenzintervalle für '
++                'Erwachsene, nur zur Einordnung. Jedes Labor veröffentlicht '
++                'eigene, und das Intervall auf deinem Befund ist das, das für '
++                'dich gilt.',
+                 style: AppText.caption.copyWith(color: AppColors.inkMuted),
+               ),
+             ],
+@@ -257,8 +258,8 @@ class _MarkerCard extends StatelessWidget {
+               if (range != null)
+                 Text(
+                   inRange == true
+-                      ? 'within the typical range'
+-                      : 'outside the typical range',
++                      ? 'im typischen Bereich'
++                      : 'außerhalb des typischen Bereichs',
+                   style: AppText.caption.copyWith(color: AppColors.inkMuted),
+                 ),
+             ],
+@@ -309,7 +310,7 @@ class _MarkerCard extends StatelessWidget {
+                 pressedScale: 0.96,
+                 onTap: () => onTapResult(latest),
+                 child: Text(
+-                  'Edit',
++                  'Bearbeiten',
+                   style: AppText.label.copyWith(color: AppColors.accent),
+                 ),
+               ),
+diff --git a/lib/ui/onboarding/welcome_screen.dart b/lib/ui/onboarding/welcome_screen.dart
+index 7052e7e..c1b1be1 100644
+--- a/lib/ui/onboarding/welcome_screen.dart
++++ b/lib/ui/onboarding/welcome_screen.dart
+@@ -57,12 +57,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
+   Future<void> _sendCode() async {
+     final email = _email.text.trim();
+     if (!email.contains('@')) {
+-      _set(() => _error = 'Enter a valid email.');
++      _set(() => _error = 'Gib eine gültige E-Mail-Adresse ein.');
+       return;
+     }
+     if (!_client.configured) {
+       _set(() => _error =
+-          'No backend configured. Set one in Profile → Backend URL, then retry.');
++          'Kein Backend konfiguriert. Lege eines unter Profil → Backend-URL fest und versuche es erneut.');
+       return;
+     }
+     _set(() {
+@@ -74,7 +74,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
+       if (!exists) {
+         _set(() {
+           _busy = false;
+-          _error = "No v2 account for that email. Continue as a new user instead.";
++          _error = "Kein v2-Konto für diese E-Mail. Starte stattdessen als neuer Nutzer.";
+         });
+         return;
+       }
+@@ -93,7 +93,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
+   Future<void> _verifyAndImport() async {
+     final code = _code.text.trim();
+     if (code.length < 4) {
+-      _set(() => _error = 'Enter the code from your email.');
++      _set(() => _error = 'Gib den Code aus deiner E-Mail ein.');
+       return;
+     }
+     final app = context.read<AppState>(); // capture before async gaps
+@@ -105,10 +105,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
+       await _client.verifyOtp(_email.text.trim(), code);
+       _set(() {
+         _step = _Step.importing;
+-        _progress = 'Downloading your last 90 days…';
++        _progress = 'Lade deine letzten 90 Tage herunter…';
+       });
+       final res = await CloudImporter.run(_client, days: CloudImporter.defaultDays);
+-      _set(() => _progress = 'Saving locally…');
++      _set(() => _progress = 'Speichere lokal…');
+       // Persist the cloud profile + mark onboarding done → the gate advances.
+       await app.completeCloudOnboard(res.profile);
+       // No pop needed: AppState.route changes and _Gate rebuilds to pairing/shell.
+@@ -122,7 +122,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
+   }
+ 
+   String _msg(Object e) =>
+-      e is BackendException ? e.message : 'Something went wrong. Try again.';
++      e is BackendException ? e.message : 'Etwas ist schiefgelaufen. Versuche es erneut.';
+ 
+   // ── build ───────────────────────────────────────────────────────────────────
+ 
+@@ -157,12 +157,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
+         const SizedBox(height: Sp.x4),
+         const AffiliationDisclaimer(),
+         const SizedBox(height: Sp.x6),
+-        Text('How do you want to start?', style: AppText.h2),
++        Text('Wie möchtest du starten?', style: AppText.h2),
+         const SizedBox(height: Sp.x4),
+         WelcomeOptionCard(
+           icon: OsIcon.sync,
+-          title: 'I used OpenStrap before',
+-          body: 'Sign in and pull your history onto this phone.',
++          title: 'Ich habe CM Health schon genutzt',
++          body: 'Melde dich an und hole deinen Verlauf auf dieses Handy.',
+           onTap: () => _set(() {
+             _step = _Step.email;
+             _error = null;
+@@ -171,16 +171,16 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
+         const SizedBox(height: Sp.x3),
+         WelcomeOptionCard(
+           icon: OsIcon.history,
+-          title: 'Import from a file',
+-          body: 'A backup from this app, or an export from another one.',
++          title: 'Aus einer Datei importieren',
++          body: 'Ein Backup aus dieser App oder ein Export aus einer anderen.',
+           onTap: () => Navigator.of(context).push(
+               themedRoute((_) => const ImportScreen(), name: 'ImportScreen')),
+         ),
+         const SizedBox(height: Sp.x3),
+         WelcomeOptionCard(
+           icon: OsIcon.profile,
+-          title: 'I’m new',
+-          body: 'A few basics and you’re in.',
++          title: 'Ich bin neu',
++          body: 'Ein paar Angaben und los geht es.',
+           accent: true,
+           onTap: () => context.read<AppState>().chooseNewUser(),
+         ),
+@@ -202,23 +202,23 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
+           ),
+         ]),
+         const SizedBox(height: Sp.x6),
+-        Text('Your account email', style: AppText.h1),
++        Text('Deine Konto-E-Mail', style: AppText.h1),
+         const SizedBox(height: Sp.x2),
+-        Text('We’ll send a 6-digit code to confirm it’s you.',
++        Text('Wir senden dir einen 6-stelligen Code, um zu bestätigen, dass du es bist.',
+             style: AppText.bodySoft),
+         const SizedBox(height: Sp.x6),
+-        _input(_email, 'you@example.com', TextInputType.emailAddress,
++        _input(_email, 'du@beispiel.de', TextInputType.emailAddress,
+             autofocus: true),
+         _errorText(),
+         const SizedBox(height: Sp.x6),
+-        _primary('Send code', _busy ? null : _sendCode),
+-        if (_error != null && _error!.startsWith('No v2 account')) ...[
++        _primary('Code senden', _busy ? null : _sendCode),
++        if (_error != null && _error!.startsWith('Kein v2-Konto')) ...[
+           const SizedBox(height: Sp.x3),
+           SizedBox(
+             width: double.infinity,
+             child: TextButton(
+               onPressed: () => context.read<AppState>().chooseNewUser(),
+-              child: const Text('Continue as a new user'),
++              child: const Text('Als neuer Nutzer fortfahren'),
+             ),
+           ),
+         ],
+@@ -240,15 +240,15 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
+           ),
+         ]),
+         const SizedBox(height: Sp.x6),
+-        Text('Enter your code', style: AppText.h1),
++        Text('Gib deinen Code ein', style: AppText.h1),
+         const SizedBox(height: Sp.x2),
+-        Text('Sent to ${_email.text.trim()}. It expires in 10 minutes.',
++        Text('Gesendet an ${_email.text.trim()}. Er läuft in 10 Minuten ab.',
+             style: AppText.bodySoft),
+         const SizedBox(height: Sp.x6),
+         _input(_code, '123456', TextInputType.number, autofocus: true, maxLen: 6),
+         _errorText(),
+         const SizedBox(height: Sp.x6),
+-        _primary('Verify & import', _busy ? null : _verifyAndImport),
++        _primary('Bestätigen & importieren', _busy ? null : _verifyAndImport),
+       ],
+     );
+   }
+@@ -270,10 +270,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
+                     strokeWidth: 2.6, color: AppColors.accent),
+               ),
+               const SizedBox(height: Sp.x5),
+-              Text(_progress ?? 'Importing…',
++              Text(_progress ?? 'Importiere…',
+                   style: AppText.title, textAlign: TextAlign.center),
+               const SizedBox(height: Sp.x2),
+-              Text('This runs once — your data stays on this device.',
++              Text('Das läuft nur einmal — deine Daten bleiben auf diesem Gerät.',
+                   textAlign: TextAlign.center, style: AppText.captionMuted),
+             ],
+           ),
+@@ -362,12 +362,12 @@ class WelcomeHero extends StatelessWidget {
+             ),
+             const SizedBox(height: Sp.x5),
+             Text(
+-              'Welcome to\nOpenStrap',
++              'Willkommen bei\nCM Health',
+               style: AppText.display.copyWith(color: tone.fg, height: 1.05),
+             ),
+             const SizedBox(height: Sp.x3),
+             Text(
+-              'Your band, your data — computed entirely on this phone.',
++              'Dein Band, deine Daten — komplett auf diesem Handy berechnet.',
+               style: AppText.bodySoft.copyWith(color: tone.fgMuted),
+             ),
+           ],
+diff --git a/lib/ui/pairing_screen.dart b/lib/ui/pairing_screen.dart
+index a83ac90..0d2c70e 100644
+--- a/lib/ui/pairing_screen.dart
++++ b/lib/ui/pairing_screen.dart
+@@ -61,11 +61,11 @@ class PairingInstructionContent extends StatelessWidget {
+       children: dsStaggered([
+         const _StrapHero(),
+         const SizedBox(height: Sp.x6),
+-        Text('Put your strap in\npairing mode.', style: AppText.display),
++        Text('Versetze dein Band in den\nKopplungsmodus.', style: AppText.display),
+         const SizedBox(height: Sp.x3),
+         Text(
+-          'Your WHOOP only talks to one phone at a time. Force-quit the '
+-          'official app first.',
++          'Dein WHOOP spricht immer nur mit einem Handy. Beende zuerst die '
++          'offizielle App vollständig.',
+           style: AppText.bodySoft,
+         ),
+         const SizedBox(height: Sp.x5),
+@@ -75,16 +75,16 @@ class PairingInstructionContent extends StatelessWidget {
+             children: const [
+               ListRow(
+                 icon: OsIcon.wear,
+-                title: 'Wake the strap',
+-                subtitle: 'Place it on its charger so it powers up.',
++                title: 'Wecke das Band',
++                subtitle: 'Lege es auf das Ladegerät, damit es startet.',
+                 divider: true,
+               ),
+               ListRow(
+                 icon: OsIcon.bluetooth,
+-                title: 'Enter pairing mode',
++                title: 'Kopplungsmodus aktivieren',
+                 subtitle:
+-                    'Follow the WHOOP unpair/reset steps so it advertises to a '
+-                    'new phone.',
++                    'Folge den WHOOP-Schritten zum Entkoppeln/Zurücksetzen, '
++                    'damit es sich einem neuen Handy anbietet.',
+               ),
+             ],
+           ),
+@@ -101,7 +101,7 @@ class PairingInstructionContent extends StatelessWidget {
+               const SizedBox(width: Sp.x3),
+               Expanded(
+                 child: Text(
+-                  'Pairing will likely fail unless the strap is in pairing mode.',
++                  'Die Kopplung schlägt vermutlich fehl, wenn das Band nicht im Kopplungsmodus ist.',
+                   style: AppText.caption.copyWith(color: AppColors.ink),
+                 ),
+               ),
+@@ -114,7 +114,7 @@ class PairingInstructionContent extends StatelessWidget {
+           child: Row(
+             mainAxisAlignment: MainAxisAlignment.center,
+             children: const [
+-              Text('My strap is in pairing mode'),
++              Text('Mein Band ist im Kopplungsmodus'),
+               SizedBox(width: Sp.x2),
+               AppIcon(OsIcon.arrowRight, size: 20, color: Colors.white),
+             ],
+@@ -180,15 +180,15 @@ String humanizePairError(Object e) {
+   if (msg.contains('permission') ||
+       msg.contains('denied') ||
+       msg.contains('unauthorized')) {
+-    return "OpenStrap needs Bluetooth permission to find your strap. Check "
+-        "your phone's settings and try again.";
++    return "CM Health braucht die Bluetooth-Berechtigung, um dein Band zu "
++        "finden. Prüfe die Einstellungen deines Handys und versuche es erneut.";
+   }
+   if (msg.contains('timeout') || msg.contains('timed out')) {
+-    return "That took too long. Make sure the strap is nearby, awake, and "
+-        "in pairing mode, then try again.";
++    return "Das hat zu lange gedauert. Stelle sicher, dass das Band in der "
++        "Nähe, wach und im Kopplungsmodus ist, und versuche es erneut.";
+   }
+-  return "Couldn't pair with your strap. Make sure it's awake and nearby, "
+-      "then try again.";
++  return "Dein Band konnte nicht gekoppelt werden. Stelle sicher, dass es "
++      "wach und in der Nähe ist, und versuche es erneut.";
+ }
+ 
+ class _ScanStep extends StatefulWidget {
+@@ -231,7 +231,7 @@ class _ScanStepState extends State<_ScanStep> {
+   }
+ 
+   String _name(BluetoothDevice d) =>
+-      d.platformName.isNotEmpty ? d.platformName : 'WHOOP band';
++      d.platformName.isNotEmpty ? d.platformName : 'WHOOP-Band';
+ 
+   /// iOS 18+ pairing: open the ASK system picker; on selection the band is provisioned
+   /// and the gate rebuilds to the main shell.
+@@ -358,11 +358,11 @@ class PairingStateView extends StatelessWidget {
+               children: [
+                 Text(
+                   switch (phase) {
+-                    PairPhase.notFound => 'No strap found.',
+-                    PairPhase.askReady => 'Pair your\nstrap.',
+-                    PairPhase.found => 'Strap found.',
+-                    PairPhase.bluetoothOff => 'Bluetooth is off.',
+-                    _ => 'Finding your\nstrap.',
++                    PairPhase.notFound => 'Kein Band gefunden.',
++                    PairPhase.askReady => 'Kopple dein\nBand.',
++                    PairPhase.found => 'Band gefunden.',
++                    PairPhase.bluetoothOff => 'Bluetooth ist aus.',
++                    _ => 'Suche dein\nBand.',
+                   },
+                   style: AppText.display,
+                 ),
+@@ -370,17 +370,17 @@ class PairingStateView extends StatelessWidget {
+                 Text(
+                   switch (phase) {
+                     PairPhase.scanning =>
+-                      'Scanning for a nearby WHOOP in pairing mode…',
+-                    PairPhase.found => 'Confirm it\'s yours, then pair.',
++                      'Suche nach einem WHOOP in der Nähe im Kopplungsmodus…',
++                    PairPhase.found => 'Bestätige, dass es deins ist, und kopple es dann.',
+                     PairPhase.notFound =>
+-                      'Make sure it\'s awake and in pairing mode, then try again.',
+-                    PairPhase.pairing => 'Pairing with your strap…',
++                      'Stelle sicher, dass es wach und im Kopplungsmodus ist, und versuche es erneut.',
++                    PairPhase.pairing => 'Kopple dein Band…',
+                     PairPhase.askReady =>
+-                      'Tap Pair, then choose your WHOOP in the system sheet. '
+-                          'This lets OpenStrap reconnect in the background.',
++                      'Tippe auf „Koppeln“ und wähle dein WHOOP im System-Dialog. '
++                          'So kann sich CM Health im Hintergrund wieder verbinden.',
+                     PairPhase.bluetoothOff =>
+-                      'Turn on Bluetooth in Settings or Control Center, then '
+-                          'try again.',
++                      'Schalte Bluetooth in den Einstellungen oder im '
++                          'Kontrollzentrum ein und versuche es erneut.',
+                   },
+                   style: AppText.bodySoft,
+                 ),
+@@ -411,7 +411,7 @@ class PairingStateView extends StatelessWidget {
+   Widget _visual() {
+     switch (phase) {
+       case PairPhase.found:
+-        return _FoundDeviceTile(name: deviceName ?? 'WHOOP band').dsPop();
++        return _FoundDeviceTile(name: deviceName ?? 'WHOOP-Band').dsPop();
+       case PairPhase.notFound:
+         return Opacity(
+           opacity: 0.45,
+@@ -453,7 +453,7 @@ class PairingStateView extends StatelessWidget {
+           child: Row(
+             mainAxisAlignment: MainAxisAlignment.center,
+             children: const [
+-              Text('Pair'),
++              Text('Koppeln'),
+               SizedBox(width: Sp.x2),
+               AppIcon(OsIcon.bluetooth, size: 20, color: Colors.white),
+             ],
+@@ -472,12 +472,12 @@ class PairingStateView extends StatelessWidget {
+       case PairPhase.notFound:
+         return OutlinedButton(
+           onPressed: onRetry,
+-          child: const Text('Scan again'),
++          child: const Text('Erneut suchen'),
+         );
+       case PairPhase.bluetoothOff:
+         return OutlinedButton(
+           onPressed: onRetry,
+-          child: const Text('Check again'),
++          child: const Text('Erneut prüfen'),
+         );
+     }
+   }
+@@ -513,7 +513,7 @@ class _FoundDeviceTile extends StatelessWidget {
+               textAlign: TextAlign.center,
+             ),
+             const SizedBox(height: Sp.x3),
+-            const StatusChip('Ready to pair',
++            const StatusChip('Bereit zum Koppeln',
+                 icon: OsIcon.activity, tone: ChipTone.positive),
+           ],
+         );
+diff --git a/lib/ui/profile_setup_screen.dart b/lib/ui/profile_setup_screen.dart
+index 192d9fa..5c22554 100644
+--- a/lib/ui/profile_setup_screen.dart
++++ b/lib/ui/profile_setup_screen.dart
+@@ -171,56 +171,56 @@ class _ProfileSetupFormState extends State<ProfileSetupForm> {
+       padding: const EdgeInsets.fromLTRB(Sp.screen, Sp.x8, Sp.screen, Sp.x8),
+       physics: const BouncingScrollPhysics(),
+       children: dsStaggered([
+-        Text('About you', style: AppText.display),
++        Text('Über dich', style: AppText.display),
+         const SizedBox(height: Sp.x3),
+         Row(
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: [
+             Expanded(
+               child: Text(
+-                'Four numbers personalize your heart-rate ceiling, calories '
+-                'and training load.',
++                'Vier Zahlen personalisieren dein Herzfrequenz-Maximum, deine '
++                'Kalorien und deine Trainingslast.',
+                 style: AppText.bodySoft,
+               ),
+             ),
+             const InfoDot(
+-              title: 'Why we ask',
++              title: 'Warum wir fragen',
+               body:
+-                  'Everything is computed on your phone. These numbers tune the '
+-                  'published formulas we use — HRmax (Tanaka), calories (Keytel) '
+-                  'and training load (Banister).',
++                  'Alles wird auf deinem Handy berechnet. Diese Zahlen stimmen '
++                  'die veröffentlichten Formeln ab, die wir verwenden — HRmax '
++                  '(Tanaka), Kalorien (Keytel) und Trainingslast (Banister).',
+               bullets: [
+-                'Leave a field blank and only that metric stays unknown — '
+-                    'never guessed.',
+-                'Change any of these later in Profile.',
++                'Lässt du ein Feld leer, bleibt nur diese Metrik unbekannt — '
++                    'nie geraten.',
++                'Du kannst alles später im Profil ändern.',
+               ],
+             ),
+           ],
+         ),
+         const SizedBox(height: Sp.x6),
+-        _label('Sex'),
++        _label('Geschlecht'),
+         const SizedBox(height: Sp.x2),
+         Row(children: [
+-          Expanded(child: _sexChip('Male', 'm')),
++          Expanded(child: _sexChip('Männlich', 'm')),
+           const SizedBox(width: Sp.x3),
+-          Expanded(child: _sexChip('Female', 'f')),
++          Expanded(child: _sexChip('Weiblich', 'f')),
+         ]),
+         const SizedBox(height: Sp.x5),
+-        _field(_age, 'Age', 'years', TextInputType.number),
++        _field(_age, 'Alter', 'Jahre', TextInputType.number),
+         const SizedBox(height: Sp.x4),
+-        _field(_weight, 'Weight', 'kg',
++        _field(_weight, 'Gewicht', 'kg',
+             const TextInputType.numberWithOptions(decimal: true)),
+         const SizedBox(height: Sp.x4),
+-        _field(_height, 'Height', 'cm',
++        _field(_height, 'Größe', 'cm',
+             const TextInputType.numberWithOptions(decimal: true)),
+         const SizedBox(height: Sp.x7),
+ 
+         // ── Privacy / consent (pre-enabled here; user can switch off) ────
+-        _label('Help improve OpenStrap'),
++        _label('Hilf, CM Health zu verbessern'),
+         const SizedBox(height: Sp.x3),
+         ConsentTile(
+-          title: 'Send anonymous diagnostics',
+-          subtitle: 'Crash reports and basic device info. No health data.',
++          title: 'Anonyme Diagnosedaten senden',
++          subtitle: 'Absturzberichte und grundlegende Geräteinfos. Keine Gesundheitsdaten.',
+           value: _telemetry,
+           onChanged: (v) => setState(() => _telemetry = v),
+         ),
+@@ -230,10 +230,10 @@ class _ProfileSetupFormState extends State<ProfileSetupForm> {
+         if (kHealthDataContributionEnabled) ...[
+           const SizedBox(height: Sp.x3),
+           ConsentTile(
+-            title: 'Contribute my health data',
++            title: 'Meine Gesundheitsdaten beitragen',
+             subtitle:
+-                'Uploads your on-device database over Wi-Fi while charging, '
+-                'to improve the algorithms.',
++                'Lädt deine Datenbank vom Gerät über WLAN hoch, während es '
++                'lädt, um die Algorithmen zu verbessern.',
+             value: _healthShare,
+             onChanged: (v) => setState(() => _healthShare = v),
+           ),
+@@ -241,8 +241,8 @@ class _ProfileSetupFormState extends State<ProfileSetupForm> {
+         const SizedBox(height: Sp.x2),
+         Text(
+           kHealthDataContributionEnabled
+-              ? 'Switch either off here or anytime in Settings.'
+-              : 'Switch it off here or anytime in Settings.',
++              ? 'Schalte beides hier oder jederzeit in den Einstellungen aus.'
++              : 'Schalte es hier oder jederzeit in den Einstellungen aus.',
+           style: AppText.caption.copyWith(color: AppColors.inkMuted),
+         ),
+         const SizedBox(height: Sp.x7),
+@@ -257,7 +257,7 @@ class _ProfileSetupFormState extends State<ProfileSetupForm> {
+                     height: 22,
+                     child: CircularProgressIndicator(
+                         strokeWidth: 2, color: Colors.white))
+-                : const Text('Continue'),
++                : const Text('Weiter'),
+           ),
+         ),
+       ]),
+diff --git a/lib/ui/recap/recap_screen.dart b/lib/ui/recap/recap_screen.dart
+index 27c2003..14b471b 100644
+--- a/lib/ui/recap/recap_screen.dart
++++ b/lib/ui/recap/recap_screen.dart
+@@ -53,7 +53,7 @@ class _RecapScreenState extends State<RecapScreen> {
+     if (api == null) {
+       setState(() {
+         _phase = _Phase.error;
+-        _error = 'Pair your strap first.';
++        _error = 'Kopple zuerst dein Band.';
+       });
+       return;
+     }
+@@ -133,7 +133,7 @@ class _RecapScreenState extends State<RecapScreen> {
+           const OsAppIcon(OsIcon.recap, size: 36),
+           const SizedBox(width: Sp.x2),
+           Expanded(
+-            child: Text('Recap',
++            child: Text('Rückblick',
+                 style: AppText.h1,
+                 maxLines: 1,
+                 overflow: TextOverflow.ellipsis),
+@@ -141,7 +141,7 @@ class _RecapScreenState extends State<RecapScreen> {
+         ],
+       ),
+       header: SegmentedControl(
+-        options: const ['Week', 'Month'],
++        options: const ['Woche', 'Monat'],
+         index: _range == '7d' ? 0 : 1,
+         onChanged: _onRange,
+         expanded: true,
+@@ -154,19 +154,19 @@ class _RecapScreenState extends State<RecapScreen> {
+         ] else if (_phase == _Phase.empty)
+           StateCard(
+             icon: OsIcon.calendar,
+-            title: 'Not enough data yet',
++            title: 'Noch nicht genug Daten',
+             message:
+-                'Wear your strap for a few days. Your recap appears once '
+-                'there is a week of data to summarize.',
+-            actionLabel: 'Try again',
++                'Trag dein Band ein paar Tage. Dein Rückblick erscheint, '
++                'sobald eine Woche an Daten zusammengekommen ist.',
++            actionLabel: 'Erneut versuchen',
+             onAction: _load,
+           )
+         else if (_phase == _Phase.error)
+           StateCard(
+             icon: OsIcon.sync,
+-            title: "Couldn't load your recap",
+-            message: _error ?? 'Please try again.',
+-            actionLabel: 'Try again',
++            title: 'Dein Rückblick konnte nicht geladen werden',
++            message: _error ?? 'Bitte versuche es erneut.',
++            actionLabel: 'Erneut versuchen',
+             onAction: _load,
+           )
+         else ...[
+@@ -203,7 +203,7 @@ class _RecapScreenState extends State<RecapScreen> {
+               ),
+             )
+           : const AppIcon(OsIcon.arrowRight, size: 20, color: Colors.white),
+-      label: Text(_sharing ? 'Preparing…' : 'Share my recap'),
++      label: Text(_sharing ? 'Wird vorbereitet…' : 'Meinen Rückblick teilen'),
+     );
+   }
+ 
+@@ -219,13 +219,13 @@ class _RecapScreenState extends State<RecapScreen> {
+       final boundary =
+           _cardKey.currentContext?.findRenderObject()
+               as RenderRepaintBoundary?;
+-      if (boundary == null) throw StateError('Card not ready');
++      if (boundary == null) throw StateError('Karte noch nicht bereit');
+ 
+       final ui.Image image = await boundary.toImage(pixelRatio: 3);
+       final ByteData? bytes = await image.toByteData(
+         format: ui.ImageByteFormat.png,
+       );
+-      if (bytes == null) throw StateError('Failed to encode image');
++      if (bytes == null) throw StateError('Bild konnte nicht kodiert werden');
+ 
+       final dir = await getTemporaryDirectory();
+       final file = File(
+@@ -238,13 +238,13 @@ class _RecapScreenState extends State<RecapScreen> {
+ 
+       await Share.shareXFiles(
+         [XFile(file.path)],
+-        text: 'My OpenStrap recap',
++        text: 'Mein CM Health Rückblick',
+         sharePositionOrigin: origin,
+       );
+     } catch (e) {
+       if (!mounted) return;
+       ScaffoldMessenger.of(context).showSnackBar(
+-        SnackBar(content: Text("Couldn't share recap: $e")),
++        SnackBar(content: Text('Rückblick konnte nicht geteilt werden: $e')),
+       );
+     } finally {
+       if (mounted) setState(() => _sharing = false);
+@@ -301,8 +301,8 @@ class RecapShareCard extends StatelessWidget {
+   // ── formatting (no intl) ───────────────────────────────────────────────────
+ 
+   static const _months = [
+-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++    'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++    'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+   ];
+ 
+   String _fmtDay(int epochSec) {
+@@ -316,7 +316,7 @@ class RecapShareCard extends StatelessWidget {
+     if (from != null && to != null && to > 0) {
+       return '${_fmtDay(from)} – ${_fmtDay(to)}';
+     }
+-    return range == '7d' ? 'This week' : 'This month';
++    return range == '7d' ? 'Diese Woche' : 'Dieser Monat';
+   }
+ 
+   static String? _hm(num? minutes) {
+@@ -347,10 +347,10 @@ class RecapShareCard extends StatelessWidget {
+   /// One highlight sentence for the banner — best available story.
+   String? _highlight(num? strainAvg, num? sleepAvgMin, int worn) {
+     final sleep = _hm(sleepAvgMin);
+-    if (sleep != null) return 'You averaged $sleep of sleep a night.';
++    if (sleep != null) return 'Du hast im Schnitt $sleep pro Nacht geschlafen.';
+     if (strainAvg != null) {
+-      return 'Average strain ${strainAvg.toStringAsFixed(1)} across '
+-          '$worn worn day${worn == 1 ? '' : 's'}.';
++      return 'Durchschnittliche Belastung ${strainAvg.toStringAsFixed(1)} an '
++          '$worn ${worn == 1 ? 'Tragetag' : 'Tragetagen'}.';
+     }
+     return null;
+   }
+@@ -404,7 +404,7 @@ class RecapShareCard extends StatelessWidget {
+               ),
+               const SizedBox(width: Sp.x2),
+               Text(
+-                'OpenStrap',
++                'CM Health',
+                 style: AppText.title.copyWith(color: AppColors.onNight),
+               ),
+               const Spacer(),
+@@ -423,7 +423,7 @@ class RecapShareCard extends StatelessWidget {
+               Expanded(
+                 child: BigStat(
+                   value: strainAvg?.toStringAsFixed(1),
+-                  label: 'Avg strain',
++                  label: 'Ø Belastung',
+                   size: BigStatSize.xl,
+                 ),
+               ),
+@@ -481,7 +481,7 @@ class RecapShareCard extends StatelessWidget {
+             children: [
+               Expanded(
+                 child: _cell(
+-                  label: 'Resting HR',
++                  label: 'Ruhepuls',
+                   value: rhrAvg == null ? null : '${rhrAvg.round()}',
+                   unit: 'bpm',
+                   extra: rhrDelta == null
+@@ -492,7 +492,7 @@ class RecapShareCard extends StatelessWidget {
+               const SizedBox(width: Sp.x3),
+               Expanded(
+                 child: _cell(
+-                  label: 'Sleep / night',
++                  label: 'Schlaf / Nacht',
+                   value: _hm(sleepAvg),
+                   extra: sleepBars.length >= 2
+                       ? MiniBars(
+@@ -511,7 +511,7 @@ class RecapShareCard extends StatelessWidget {
+             children: [
+               Expanded(
+                 child: _cell(
+-                  label: 'Calories',
++                  label: 'Kalorien',
+                   value: _compact(calories),
+                   unit: 'kcal',
+                 ),
+@@ -519,7 +519,7 @@ class RecapShareCard extends StatelessWidget {
+               const SizedBox(width: Sp.x3),
+               Expanded(
+                 child: _cell(
+-                  label: 'Steps',
++                  label: 'Schritte',
+                   value: _compact(stepsTotal),
+                   extra: stepsSeries.length >= 2
+                       ? MiniBars(
+@@ -553,7 +553,7 @@ class RecapShareCard extends StatelessWidget {
+                   const SizedBox(width: Sp.x2),
+                   Expanded(
+                     child: Text(
+-                      'Top workout — '
++                      'Top-Workout — '
+                       '${_titleCase((top['type'] ?? 'workout').toString())}',
+                       style: AppText.caption.copyWith(
+                         color: AppColors.onNight,
+@@ -566,7 +566,7 @@ class RecapShareCard extends StatelessWidget {
+                   Text(
+                     [
+                       if (_num(top['strain']) != null)
+-                        '${_num(top['strain'])!.toStringAsFixed(1)} strain',
++                        '${_num(top['strain'])!.toStringAsFixed(1)} Belastung',
+                       if (_num(top['duration_min']) != null)
+                         '${_num(top['duration_min'])!.round()} min',
+                     ].join(' · '),
+@@ -586,7 +586,7 @@ class RecapShareCard extends StatelessWidget {
+               AppIcon(OsIcon.shield, size: 13, color: AppColors.onNightSoft),
+               const SizedBox(width: 6),
+               Text(
+-                'your data · your device · openstrap',
++                'deine Daten · dein Gerät · CM Health',
+                 style: AppText.caption.copyWith(color: AppColors.onNightSoft),
+               ),
+             ],
+diff --git a/lib/ui/records/records_screen.dart b/lib/ui/records/records_screen.dart
+index 70c695a..463499f 100644
+--- a/lib/ui/records/records_screen.dart
++++ b/lib/ui/records/records_screen.dart
+@@ -36,7 +36,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
+     if (api == null) {
+       setState(() {
+         _phase = _Phase.error;
+-        _error = 'Pair your strap first.';
++        _error = 'Kopple zuerst dein Band.';
+       });
+       return;
+     }
+@@ -88,11 +88,11 @@ class _RecordsScreenState extends State<RecordsScreen> {
+               crossAxisAlignment: CrossAxisAlignment.start,
+               mainAxisSize: MainAxisSize.min,
+               children: [
+-                Text('Records',
++                Text('Rekorde',
+                     style: AppText.h1,
+                     maxLines: 1,
+                     overflow: TextOverflow.ellipsis),
+-                Text('Your body, over time', style: AppText.captionMuted),
++                Text('Dein Körper im Zeitverlauf', style: AppText.captionMuted),
+               ],
+             ),
+           ),
+@@ -108,19 +108,19 @@ class _RecordsScreenState extends State<RecordsScreen> {
+         ] else if (_phase == _Phase.empty)
+           StateCard(
+             icon: OsIcon.records,
+-            title: 'Nothing logged yet',
++            title: 'Noch nichts aufgezeichnet',
+             message:
+-                'Wear and sync for a few days. Your records, streaks and '
+-                'trends build up here over time.',
+-            actionLabel: 'Try again',
++                'Trage das Band ein paar Tage und synchronisiere. Deine '
++                'Rekorde, Serien und Trends bauen sich hier mit der Zeit auf.',
++            actionLabel: 'Erneut versuchen',
+             onAction: _load,
+           )
+         else if (_phase == _Phase.error)
+           StateCard(
+             icon: OsIcon.sync,
+-            title: "Couldn't load your records",
+-            message: _error ?? 'Please try again.',
+-            actionLabel: 'Try again',
++            title: 'Deine Rekorde konnten nicht geladen werden',
++            message: _error ?? 'Bitte versuche es erneut.',
++            actionLabel: 'Erneut versuchen',
+             onAction: _load,
+           )
+         else
+@@ -142,8 +142,8 @@ class RecordsContent extends StatelessWidget {
+   // ── formatting ────────────────────────────────────────────────────────────
+ 
+   static const _months = [
+-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++    'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++    'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+   ];
+ 
+   static String _prettyDate(String iso) {
+@@ -151,7 +151,7 @@ class RecordsContent extends StatelessWidget {
+     if (p.length != 3) return iso;
+     final mo = int.tryParse(p[1]), d = int.tryParse(p[2]);
+     if (mo == null || d == null || mo < 1 || mo > 12) return iso;
+-    return '${_months[mo - 1]} $d';
++    return '$d. ${_months[mo - 1]}';
+   }
+ 
+   static String _hm(num m) {
+@@ -220,8 +220,8 @@ class RecordsContent extends StatelessWidget {
+       tone: BentoTone.ink,
+       child: Row(
+         children: [
+-          cell('${r.daysTracked}', 'Days'),
+-          cell('${r.nightsTracked}', 'Nights'),
++          cell('${r.daysTracked}', 'Tage'),
++          cell('${r.nightsTracked}', 'Nächte'),
+           cell('${r.workoutsTracked}', 'Workouts'),
+         ],
+       ),
+@@ -246,9 +246,9 @@ class RecordsContent extends StatelessWidget {
+     final rec = r.record(key)!;
+     final (value, unit) = _fmt(key, rec.value);
+     final title = switch (key) {
+-      'top_workout' => 'Top workout strain — $value',
+-      'top_strain' => 'Biggest day strain — $value',
+-      _ => 'Lowest resting HR — $value ${unit ?? ''}'.trim(),
++      'top_workout' => 'Höchste Workout-Belastung — $value',
++      'top_strain' => 'Höchste Tagesbelastung — $value',
++      _ => 'Niedrigster Ruhepuls — $value ${unit ?? ''}'.trim(),
+     };
+     final type = rec.type;
+     final subtitle = (type != null && type.isNotEmpty)
+@@ -256,7 +256,7 @@ class RecordsContent extends StatelessWidget {
+         : _prettyDate(rec.date);
+     return MedalCard(
+       medal: 'PR',
+-      overline: 'Personal record',
++      overline: 'Persönlicher Rekord',
+       title: title,
+       subtitle: subtitle,
+     );
+@@ -265,14 +265,14 @@ class RecordsContent extends StatelessWidget {
+   // ── the rest of the PRs: per-domain BigStat bento ─────────────────────────
+ 
+   static const _recordDefs = <(String, String, OsIcon, OsIcon?)>[
+-    ('lowest_rhr', 'Lowest resting HR', OsIcon.heart, OsIcon.restingHeartRate),
+-    ('lowest_sleeping_hr', 'Lowest sleeping HR', OsIcon.sleep, OsIcon.sleep),
+-    ('top_strain', 'Biggest day strain', OsIcon.bodyStrain, OsIcon.bodyStrain),
+-    ('top_workout', 'Top workout strain', OsIcon.run, OsIcon.workouts),
+-    ('longest_sleep', 'Longest sleep', OsIcon.bedtime, OsIcon.bedtime),
+-    ('best_efficiency', 'Sleep efficiency', OsIcon.sleep, OsIcon.sleep),
+-    ('most_steps', 'Most steps', OsIcon.run, OsIcon.steps),
+-    ('top_readiness', 'Top readiness', OsIcon.recovery, OsIcon.recovery),
++    ('lowest_rhr', 'Niedrigster Ruhepuls', OsIcon.heart, OsIcon.restingHeartRate),
++    ('lowest_sleeping_hr', 'Niedrigste Schlaf-HF', OsIcon.sleep, OsIcon.sleep),
++    ('top_strain', 'Höchste Tagesbelastung', OsIcon.bodyStrain, OsIcon.bodyStrain),
++    ('top_workout', 'Höchste Workout-Belastung', OsIcon.run, OsIcon.workouts),
++    ('longest_sleep', 'Längster Schlaf', OsIcon.bedtime, OsIcon.bedtime),
++    ('best_efficiency', 'Schlafeffizienz', OsIcon.sleep, OsIcon.sleep),
++    ('most_steps', 'Meiste Schritte', OsIcon.run, OsIcon.steps),
++    ('top_readiness', 'Beste Tagesform', OsIcon.recovery, OsIcon.recovery),
+   ];
+ 
+   static Color _accentOf(String key) => switch (key) {
+@@ -336,9 +336,9 @@ class RecordsContent extends StatelessWidget {
+           crossAxisAlignment: CrossAxisAlignment.start,
+           mainAxisSize: MainAxisSize.min,
+           children: [
+-            const TileHeader('Resting HR trend'),
++            const TileHeader('Ruhepuls-Trend'),
+             const SizedBox(height: Sp.x2),
+-            const BigStat.dash(caption: 'Needs ~3 weeks of nights'),
++            const BigStat.dash(caption: 'Braucht ~3 Wochen an Nächten'),
+           ],
+         ),
+       );
+@@ -346,10 +346,10 @@ class RecordsContent extends StatelessWidget {
+     final improving = d.direction == 'improving';
+     final flat = d.direction == 'flat';
+     final headline = flat
+-        ? 'Holding steady'
++        ? 'Bleibt stabil'
+         : improving
+-            ? 'Down ${d.delta.abs().toStringAsFixed(1)} bpm'
+-            : 'Up ${d.delta.abs().toStringAsFixed(1)} bpm';
++            ? '${d.delta.abs().toStringAsFixed(1)} bpm gesunken'
++            : '${d.delta.abs().toStringAsFixed(1)} bpm gestiegen';
+     return BentoTile(
+       tone: BentoTone.soft,
+       accent: DomainAccent.heart,
+@@ -358,26 +358,26 @@ class RecordsContent extends StatelessWidget {
+         mainAxisSize: MainAxisSize.min,
+         children: [
+           TileHeader(
+-            'Resting HR trend',
++            'Ruhepuls-Trend',
+             trailing: InfoDot(
+-              title: 'Resting-HR trend',
++              title: 'Ruhepuls-Trend',
+               body: improving
+-                  ? 'A falling resting heart rate usually means your fitness '
+-                      'is improving.'
++                  ? 'Ein sinkender Ruhepuls bedeutet meist, dass deine Fitness '
++                      'besser wird.'
+                   : flat
+-                      ? 'Your resting heart rate has been stable.'
+-                      : 'A rising resting heart rate can mean fatigue, stress '
+-                          'or illness — worth keeping an eye on.',
++                      ? 'Dein Ruhepuls war stabil.'
++                      : 'Ein steigender Ruhepuls kann Ermüdung, Stress oder '
++                          'Krankheit bedeuten — behalte ihn im Blick.',
+               methodNote:
+-                  'Mean of the newest 7 nightly RHR values vs ~30 days back '
+-                  '(${d.days} days of history).',
++                  'Mittel der neuesten 7 nächtlichen Ruhepuls-Werte vs. ~30 '
++                  'Tage zuvor (${d.days} Tage Historie).',
+             ),
+           ),
+           const SizedBox(height: Sp.x2),
+           BigStat(
+             value: d.now.toStringAsFixed(0),
+             unit: 'bpm',
+-            caption: '$headline · from ${d.then.toStringAsFixed(0)}',
++            caption: '$headline · vorher ${d.then.toStringAsFixed(0)}',
+             captionAccent: !flat && !improving,
+           ),
+           if (rhrSpark.length >= 2) ...[
+@@ -398,9 +398,9 @@ class RecordsContent extends StatelessWidget {
+   // ── streak flames ─────────────────────────────────────────────────────────
+ 
+   static const _streakDefs = <(String, String, Color Function())>[
+-    ('wear', 'Wear', _accentBrand),
+-    ('sleep', 'Sleep', _accentSleep),
+-    ('strain_target', 'Strain target', _accentStrain),
++    ('wear', 'Tragezeit', _accentBrand),
++    ('sleep', 'Schlaf', _accentSleep),
++    ('strain_target', 'Belastungsziel', _accentStrain),
+   ];
+ 
+   static Color _accentBrand() => AppColors.accent;
+@@ -421,7 +421,7 @@ class RecordsContent extends StatelessWidget {
+             crossAxisAlignment: CrossAxisAlignment.start,
+             mainAxisSize: MainAxisSize.min,
+             children: [
+-              TileHeader('$label streak',
++              TileHeader('$label-Serie',
+                   icon: active ? OsIcon.calories : OsIcon.wear,
+                   // Streak art only while the streak is alive — a broken
+                   // streak keeps the quiet watch glyph.
+@@ -429,7 +429,7 @@ class RecordsContent extends StatelessWidget {
+               const SizedBox(height: Sp.x2),
+               BigStat(
+                 value: '${s.current}',
+-                unit: s.current == 1 ? 'day' : 'days',
++                unit: s.current == 1 ? 'Tag' : 'Tage',
+                 caption: s.label,
+               ),
+             ],
+diff --git a/lib/ui/widgets/screen_loader.dart b/lib/ui/widgets/screen_loader.dart
+index 0c3b204..6170299 100644
+--- a/lib/ui/widgets/screen_loader.dart
++++ b/lib/ui/widgets/screen_loader.dart
+@@ -107,7 +107,7 @@ mixin ScreenLoaderMixin<W extends StatefulWidget> on State<W> {
+       if (mounted) {
+         setState(() {
+           phase = LoadPhase.empty;
+-          errorText = 'Local insights are not available yet.';
++          errorText = 'Lokale Einblicke sind noch nicht verfügbar.';
+         });
+       }
+       _refreshGate.finishAndShouldReplay();
+@@ -135,8 +135,8 @@ mixin ScreenLoaderMixin<W extends StatefulWidget> on State<W> {
+         } else {
+           phase = LoadPhase.error;
+           errorText = e is RepositoryException
+-              ? 'Couldn\'t load your insights.'
+-              : 'Something went wrong loading insights.';
++              ? 'Deine Einblicke konnten nicht geladen werden.'
++              : 'Beim Laden der Einblicke ist etwas schiefgelaufen.';
+         }
+       });
+     } finally {
+diff --git a/lib/ui/widgets/status_banner.dart b/lib/ui/widgets/status_banner.dart
+index 9ed6e40..e18b6d0 100644
+--- a/lib/ui/widgets/status_banner.dart
++++ b/lib/ui/widgets/status_banner.dart
+@@ -56,7 +56,7 @@ class _UpdateCard extends StatelessWidget {
+ 
+   @override
+   Widget build(BuildContext context) {
+-    final ver = update.latestVersion != null ? 'v${update.latestVersion}' : 'A new version';
++    final ver = update.latestVersion != null ? 'v${update.latestVersion}' : 'Eine neue Version';
+     return ProCard(
+       color: AppColors.coralSoft,
+       onTap: () => _startUpdate(context, update),
+@@ -75,9 +75,9 @@ class _UpdateCard extends StatelessWidget {
+             child: Column(
+               crossAxisAlignment: CrossAxisAlignment.start,
+               children: [
+-                Text(mandatory ? 'Update required' : 'Update available', style: AppText.title),
++                Text(mandatory ? 'Update erforderlich' : 'Update verfügbar', style: AppText.title),
+                 const SizedBox(height: 2),
+-                Text('$ver is ready to install.', style: AppText.bodySoft),
++                Text('$ver ist bereit zur Installation.', style: AppText.bodySoft),
+               ],
+             ),
+           ),
+@@ -135,7 +135,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
+       (p) {
+         if (!mounted) return;
+         if (p.phase == 'error') {
+-          setState(() => _error = p.message ?? 'Update failed');
++          setState(() => _error = p.message ?? 'Update fehlgeschlagen');
+         } else {
+           setState(() {
+             _phase = p.phase;
+@@ -152,7 +152,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
+   @override
+   Widget build(BuildContext context) {
+     final u = widget.update;
+-    final ver = u.latestVersion != null ? 'v${u.latestVersion}' : 'New version';
++    final ver = u.latestVersion != null ? 'v${u.latestVersion}' : 'Neue Version';
+     return AlertDialog(
+       backgroundColor: AppColors.surface,
+       title: Text(ver, style: AppText.h2),
+@@ -163,15 +163,15 @@ class _UpdateDialogState extends State<_UpdateDialog> {
+           if (!_running && (u.notes?.isNotEmpty ?? false))
+             Text(u.notes!, style: AppText.bodySoft)
+           else if (!_running)
+-            Text("Download and install the latest OpenStrap.", style: AppText.bodySoft),
++            Text("Lade die neueste Version von CM Health herunter und installiere sie.", style: AppText.bodySoft),
+           if (_running) ...[
+             const SizedBox(height: Sp.x2),
+             Text(
+               _error != null
+-                  ? 'Could not install automatically.'
++                  ? 'Automatische Installation nicht möglich.'
+                   : _phase == 'installing'
+-                      ? 'Opening installer…'
+-                      : 'Downloading… $_percent%',
++                      ? 'Installer wird geöffnet…'
++                      : 'Wird heruntergeladen… $_percent%',
+               style: AppText.bodySoft,
+             ),
+             const SizedBox(height: Sp.x3),
+@@ -187,7 +187,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
+               ),
+             if (_error != null) ...[
+               const SizedBox(height: Sp.x2),
+-              Text('Tip: allow "install unknown apps" for OpenStrap, or download in your browser.',
++              Text('Tipp: Erlaube "Unbekannte Apps installieren" für CM Health oder lade das Update im Browser herunter.',
+                   style: AppText.captionMuted),
+             ],
+           ],
+@@ -197,17 +197,17 @@ class _UpdateDialogState extends State<_UpdateDialog> {
+         if (_error != null)
+           TextButton(
+             onPressed: () => UpdateService.openInBrowser(widget.update.apkUrl!),
+-            child: Text('Open in browser', style: AppText.label.copyWith(color: AppColors.coralDeep)),
++            child: Text('Im Browser öffnen', style: AppText.label.copyWith(color: AppColors.coralDeep)),
+           ),
+         TextButton(
+           onPressed: () => Navigator.of(context).pop(),
+-          child: Text('Close', style: AppText.label.copyWith(color: AppColors.inkMuted)),
++          child: Text('Schließen', style: AppText.label.copyWith(color: AppColors.inkMuted)),
+         ),
+         if (!_running || _error != null)
+           FilledButton(
+             style: FilledButton.styleFrom(backgroundColor: AppColors.coralDeep),
+             onPressed: _run,
+-            child: Text(_error != null ? 'Retry' : 'Update now'),
++            child: Text(_error != null ? 'Erneut versuchen' : 'Jetzt aktualisieren'),
+           ),
+       ],
+     );
+@@ -265,7 +265,7 @@ class _AlertCard extends StatelessWidget {
+                 if (_hasLink) ...[
+                   const SizedBox(height: Sp.x2),
+                   Row(mainAxisSize: MainAxisSize.min, children: [
+-                    Text('Open', style: AppText.label.copyWith(color: s.fg, fontWeight: FontWeight.w700)),
++                    Text('Öffnen', style: AppText.label.copyWith(color: s.fg, fontWeight: FontWeight.w700)),
+                     const SizedBox(width: 3),
+                     AppIcon(OsIcon.arrowRight, size: 14, color: s.fg),
+                   ]),

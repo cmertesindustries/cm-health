@@ -1,0 +1,2138 @@
+diff --git a/lib/ui/coach/ai_coach_screen.dart b/lib/ui/coach/ai_coach_screen.dart
+index b6194d4..af84d0c 100644
+--- a/lib/ui/coach/ai_coach_screen.dart
++++ b/lib/ui/coach/ai_coach_screen.dart
+@@ -35,11 +35,11 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+   String? _status;
+ 
+   static const _starters = [
+-    'How recovered am I today, and why?',
+-    'Show my HRV trend this month',
+-    'Compare my resting HR vs HRV over 2 weeks',
+-    'How has my sleep been this week?',
+-    'What should my training look like today?',
++    'Wie erholt bin ich heute — und warum?',
++    'Zeig mir meinen HRV-Trend diesen Monat',
++    'Vergleiche meinen Ruhepuls mit meiner HRV über 2 Wochen',
++    'Wie war mein Schlaf diese Woche?',
++    'Wie sollte mein Training heute aussehen?',
+   ];
+ 
+   @override
+@@ -97,7 +97,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+       );
+     } catch (e) {
+       setStateIfMounted(() => _items.add(CoachItem.error(
+-          e is CoachException ? e.message : 'Something went wrong: $e')));
++          e is CoachException ? e.message : 'Etwas ist schiefgelaufen: $e')));
+     } finally {
+       if (mounted) {
+         setState(() {
+@@ -147,7 +147,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+                 children: [
+                   Row(
+                     children: [
+-                      Text('Chat history', style: AppText.h2),
++                      Text('Chat-Verlauf', style: AppText.h2),
+                       const Spacer(),
+                       TextButton.icon(
+                         onPressed: () {
+@@ -155,7 +155,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+                           _newChat();
+                         },
+                         icon: AppIcon(OsIcon.plus, size: 16, color: AppColors.accent),
+-                        label: Text('New chat',
++                        label: Text('Neuer Chat',
+                             style:
+                                 AppText.label.copyWith(color: AppColors.accent)),
+                       ),
+@@ -170,7 +170,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+                     Padding(
+                         padding: const EdgeInsets.all(Sp.x4),
+                         child:
+-                            Text('No past chats yet.', style: AppText.captionMuted))
++                            Text('Noch keine früheren Chats.', style: AppText.captionMuted))
+                   else
+                     SurfaceCard(
+                       padding: const EdgeInsets.symmetric(
+@@ -182,7 +182,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+                               icon: OsIcon.ai,
+                               iconColor: AppColors.accent,
+                               title: sessions[i].title.isEmpty
+-                                  ? 'Untitled chat'
++                                  ? 'Chat ohne Titel'
+                                   : sessions[i].title,
+                               subtitle: [
+                                 if (sessions[i].preview.isNotEmpty)
+@@ -224,10 +224,10 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+ 
+   static String _relTime(int ms) {
+     final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+-    if (d.inMinutes < 1) return 'just now';
+-    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+-    if (d.inHours < 24) return '${d.inHours}h ago';
+-    return '${d.inDays}d ago';
++    if (d.inMinutes < 1) return 'gerade eben';
++    if (d.inMinutes < 60) return 'vor ${d.inMinutes} min';
++    if (d.inHours < 24) return 'vor ${d.inHours} h';
++    return 'vor ${d.inDays} Tg.';
+   }
+ 
+   Future<bool> _confirm(ActionRequest req) async {
+@@ -240,10 +240,10 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+         actions: [
+           TextButton(
+               onPressed: () => Navigator.pop(ctx, false),
+-              child: const Text('Cancel')),
++              child: const Text('Abbrechen')),
+           FilledButton(
+               onPressed: () => Navigator.pop(ctx, true),
+-              child: const Text('Confirm')),
++              child: const Text('Bestätigen')),
+         ],
+       ),
+     );
+@@ -270,8 +270,8 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+     final signedIn = context.select<AppState, bool>((s) => s.repo != null);
+ 
+     return AppScaffold(
+-      title: 'AI Coach',
+-      subtitle: cfg.configured ? cfg.model : 'Not configured',
++      title: 'KI-Coach',
++      subtitle: cfg.configured ? cfg.model : 'Nicht konfiguriert',
+       largeTitle: false,
+       actions: [
+         RoundIconButton(OsIcon.history, onTap: _openSessions),
+@@ -284,7 +284,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+             child: !cfg.configured
+                 ? (cfg.keyUnreadable ? _lockedKeyNotice(cfg) : _setupPrompt())
+                 : !signedIn
+-                    ? _centered('Pair your strap to use the coach.')
++                    ? _centered('Kopple dein Band, um den Coach zu nutzen.')
+                     : _items.isEmpty
+                         ? _starterView()
+                         : _transcript(),
+@@ -305,12 +305,13 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+         children: [
+           StateCard(
+             icon: OsIcon.ai,
+-            title: 'Your key is still saved',
++            title: 'Dein Schlüssel ist weiterhin gespeichert',
+             message:
+-                'It could not be read from the keychain this time — that '
+-                'happens when the app is woken while the phone is locked. '
+-                'Retry, or reopen the app once the phone has been unlocked.',
+-            actionLabel: 'Retry',
++                'Er konnte diesmal nicht aus dem Schlüsselbund gelesen werden '
++                '— das passiert, wenn die App bei gesperrtem Handy geweckt '
++                'wird. Versuche es erneut oder öffne die App neu, sobald das '
++                'Handy entsperrt wurde.',
++            actionLabel: 'Erneut versuchen',
+             onAction: () async {
+               await cfg.refreshKeyOnResume();
+               if (mounted) setState(() {});
+@@ -324,12 +325,13 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+         children: [
+           StateCard(
+             icon: OsIcon.ai,
+-            title: 'Bring your own AI',
++            title: 'Bring deine eigene KI mit',
+             message:
+-                'Use any OpenAI-compatible provider with your own API key. Your '
+-                'key stays on this device and talks to the provider directly — '
+-                'it never touches OpenStrap servers.',
+-            actionLabel: 'Set up your AI coach',
++                'Nutze einen beliebigen OpenAI-kompatiblen Anbieter mit deinem '
++                'eigenen API-Schlüssel. Dein Schlüssel bleibt auf diesem Gerät '
++                'und spricht direkt mit dem Anbieter — er erreicht nie die '
++                'Server von CM Health.',
++            actionLabel: 'KI-Coach einrichten',
+             onAction: _openSettings,
+           ).dsEnter(),
+         ],
+@@ -339,12 +341,12 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+         padding: const EdgeInsets.fromLTRB(Sp.screen, Sp.x2, Sp.screen, Sp.x6),
+         children: [
+           AiHero(
+-            overline: 'YOUR DATA, YOUR AI',
+-            line: 'Ask anything about your health.',
+-            cta: 'I can read every metric in your data and chart it.',
++            overline: 'DEINE DATEN, DEINE KI',
++            line: 'Frag alles über deine Gesundheit.',
++            cta: 'Ich kann jede Metrik in deinen Daten lesen und als Diagramm zeigen.',
+           ).dsEnter(index: 0),
+           const SizedBox(height: Sp.x5),
+-          Text('TRY ASKING',
++          Text('FRAG ZUM BEISPIEL',
+               style: AppText.overline.copyWith(color: AppColors.inkMuted))
+               .dsEnter(index: 1),
+           const SizedBox(height: Sp.x2),
+@@ -402,7 +404,7 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
+                 textInputAction: TextInputAction.send,
+                 onSubmitted: _busy ? null : _send,
+                 decoration: InputDecoration(
+-                  hintText: 'Ask about your health…',
++                  hintText: 'Frag etwas zu deiner Gesundheit…',
+                   hintStyle:
+                       AppText.bodySoft.copyWith(color: AppColors.inkMuted),
+                   filled: true,
+diff --git a/lib/ui/coach/coach_render.dart b/lib/ui/coach/coach_render.dart
+index 1906a5d..e18de4a 100644
+--- a/lib/ui/coach/coach_render.dart
++++ b/lib/ui/coach/coach_render.dart
+@@ -98,7 +98,7 @@ class CoachRender extends StatelessWidget {
+         body = _MiniTable(spec);
+         break;
+       default:
+-        body = Text('Unsupported figure "$type".', style: AppText.captionMuted);
++        body = Text('Nicht unterstützte Grafik "$type".', style: AppText.captionMuted);
+     }
+     final note = _str(spec['note']);
+     final legend = _legend(type);
+@@ -123,15 +123,22 @@ class CoachRender extends StatelessWidget {
+     if (type == 'hypnogram') {
+       return Wrap(spacing: Sp.x4, runSpacing: Sp.x2, children: [
+         for (final s in const ['wake', 'rem', 'light', 'deep'])
+-          _dot(_stageColor(s), s),
++          _dot(
++              _stageColor(s),
++              const {
++                'wake': 'Wach',
++                'rem': 'REM',
++                'light': 'Leicht',
++                'deep': 'Tief',
++              }[s]!),
+       ]);
+     }
+     if (type == 'dual_axis') {
+       final l = (spec['left'] as Map?)?.cast<String, dynamic>();
+       final r = (spec['right'] as Map?)?.cast<String, dynamic>();
+       return Wrap(spacing: Sp.x4, children: [
+-        _dot(_palette[0], _str(l?['name'] ?? 'left')),
+-        _dot(_palette[1], _str(r?['name'] ?? 'right')),
++        _dot(_palette[0], _str(l?['name'] ?? 'links')),
++        _dot(_palette[1], _str(r?['name'] ?? 'rechts')),
+       ]);
+     }
+     if (type == 'stacked_zone_bar') {
+@@ -434,7 +441,7 @@ class _RangeBand extends StatelessWidget {
+         ]));
+       }),
+       const SizedBox(height: Sp.x2),
+-      Text('target ${min.toStringAsFixed(0)}–${max.toStringAsFixed(0)}$unit',
++      Text('Ziel ${min.toStringAsFixed(0)}–${max.toStringAsFixed(0)}$unit',
+           style: AppText.captionMuted),
+     ]);
+   }
+@@ -447,7 +454,7 @@ class _KpiGrid extends StatelessWidget {
+   @override
+   Widget build(BuildContext context) {
+     final cards = _list(spec['cards']).whereType<Map>().toList();
+-    if (cards.isEmpty) return Text('No data.', style: AppText.captionMuted);
++    if (cards.isEmpty) return Text('Keine Daten.', style: AppText.captionMuted);
+     return Wrap(spacing: Sp.x3, runSpacing: Sp.x3, children: [
+       for (final c in cards) _kpi(c.cast<String, dynamic>()),
+     ]);
+@@ -520,7 +527,7 @@ class _Heatmap extends StatelessWidget {
+     final values = _list(spec['values'])
+         .map((r) => _list(r).map((v) => _num(v) ?? 0).toList())
+         .toList();
+-    if (values.isEmpty) return Text('No data.', style: AppText.captionMuted);
++    if (values.isEmpty) return Text('Keine Daten.', style: AppText.captionMuted);
+     final flat = [for (final r in values) ...r];
+     var lo = flat.reduce(math.min), hi = flat.reduce(math.max);
+     if (lo == hi) hi = lo + 1;
+@@ -565,7 +572,7 @@ class _MiniTable extends StatelessWidget {
+   Widget build(BuildContext context) {
+     final cols = _list(spec['columns']).map(_str).toList();
+     final rows = _list(spec['rows']).map((r) => _list(r).map(_str).toList()).toList();
+-    if (rows.isEmpty) return Text('No data.', style: AppText.captionMuted);
++    if (rows.isEmpty) return Text('Keine Daten.', style: AppText.captionMuted);
+     return Table(
+       border: TableBorder(horizontalInside: BorderSide(color: AppColors.divider)),
+       defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+diff --git a/lib/ui/coach/coach_screen.dart b/lib/ui/coach/coach_screen.dart
+index dcdcb92..d4094e2 100644
+--- a/lib/ui/coach/coach_screen.dart
++++ b/lib/ui/coach/coach_screen.dart
+@@ -16,16 +16,16 @@ class CoachScreen extends StatelessWidget {
+   @override
+   Widget build(BuildContext context) {
+     return AppScaffold(
+-      title: 'Your plan',
+-      subtitle: 'Built from your own data',
++      title: 'Dein Plan',
++      subtitle: 'Aus deinen eigenen Daten erstellt',
+       actions: [
+         InfoDot(
+-          title: 'How this plan is made',
++          title: 'Wie dieser Plan entsteht',
+           body:
+-              'Simple, deterministic rules over your own recovery, sleep and '
+-              'load — no AI, no server. Every suggestion shows the exact '
+-              'numbers that fired it.',
+-          methodNote: 'Rule-based · on-device · updates with each sync',
++              'Einfache, deterministische Regeln über deine Erholung, deinen '
++              'Schlaf und deine Last — keine KI, kein Server. Jeder Vorschlag '
++              'zeigt die genauen Zahlen, die ihn ausgelöst haben.',
++          methodNote: 'Regelbasiert · auf dem Gerät · aktualisiert sich mit jeder Synchronisierung',
+         ),
+       ],
+       children: [CoachPlanContent(coach: coach), const SizedBox(height: Sp.x8)],
+@@ -95,7 +95,7 @@ class CoachPlanContent extends StatelessWidget {
+         ],
+ 
+         const SizedBox(height: Sp.x6),
+-        const SectionHeader('What to do today'),
++        const SectionHeader('Das steht heute an'),
+         if (plan.isEmpty)
+           SurfaceCard(
+             child: Row(
+@@ -104,7 +104,7 @@ class CoachPlanContent extends StatelessWidget {
+                 const SizedBox(width: Sp.x3),
+                 Expanded(
+                   child: Text(
+-                    'Nothing flagged — carry on with your day.',
++                    'Nichts auffällig — mach einfach weiter mit deinem Tag.',
+                     style: AppText.bodySoft,
+                   ),
+                 ),
+@@ -140,22 +140,22 @@ class _StrainTargetTile extends StatelessWidget {
+         mainAxisSize: MainAxisSize.min,
+         children: [
+           TileHeader(
+-            "Today's strain target",
++            'Belastungsziel für heute',
+             trailing: InfoDot(
+-              title: 'Strain target',
++              title: 'Belastungsziel',
+               body:
+-                  'How hard to go today, on the 0–21 strain scale, given your '
+-                  'recovery and recent load. The band is the aim zone — the '
+-                  'number is its centre.',
++                  'Wie hart du heute gehen kannst, auf der Belastungsskala von '
++                  '0–21, basierend auf deiner Erholung und deiner jüngsten '
++                  'Last. Das Band ist die Zielzone — die Zahl ihre Mitte.',
+               methodNote: t.rationale.isEmpty ? null : t.rationale,
+             ),
+           ),
+           const SizedBox(height: Sp.x2),
+           BigStat(
+             value: t.value.toStringAsFixed(1),
+-            unit: 'of 21',
++            unit: 'von 21',
+             caption:
+-                'aim ${t.low.toStringAsFixed(0)}–${t.high.toStringAsFixed(0)}',
++                'Ziel ${t.low.toStringAsFixed(0)}–${t.high.toStringAsFixed(0)}',
+             captionAccent: true,
+           ),
+           const SizedBox(height: Sp.x3),
+diff --git a/lib/ui/coach/coach_settings_screen.dart b/lib/ui/coach/coach_settings_screen.dart
+index 682a4da..6b04b2c 100644
+--- a/lib/ui/coach/coach_settings_screen.dart
++++ b/lib/ui/coach/coach_settings_screen.dart
+@@ -47,7 +47,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+ 
+   Future<void> _fetchModels() async {
+     if (_key.text.trim().isEmpty) {
+-      setState(() => _msg = 'Enter your API key first.');
++      setState(() => _msg = 'Gib zuerst deinen API-Schlüssel ein.');
+       return;
+     }
+     setState(() { _loadingModels = true; _msg = null; });
+@@ -56,11 +56,11 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+       if (!mounted) return;
+       setState(() {
+         _models = ids;
+-        _msg = ids.isEmpty ? 'Provider returned no models — type one manually.' : '${ids.length} models found. Search and tap to pick.';
++        _msg = ids.isEmpty ? 'Der Anbieter hat keine Modelle geliefert — gib eines manuell ein.' : '${ids.length} Modelle gefunden. Suche und tippe zum Auswählen.';
+       });
+     } catch (e) {
+       if (!mounted) return;
+-      setState(() => _msg = e is CoachException ? e.message : 'Could not list models: $e');
++      setState(() => _msg = e is CoachException ? e.message : 'Modelle konnten nicht geladen werden: $e');
+     } finally {
+       if (mounted) setState(() => _loadingModels = false);
+     }
+@@ -72,7 +72,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+   Future<void> _save() async {
+     final cfg = context.read<CoachConfig>();
+     if (_chosen.isEmpty) {
+-      setState(() => _msg = 'Pick or type a model first.');
++      setState(() => _msg = 'Wähle oder tippe zuerst ein Modell ein.');
+       return;
+     }
+     // Capture the messenger + navigator BEFORE the await (no BuildContext across
+@@ -100,7 +100,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+       // The keychain refused it. Saying "saved" here is the silent loss this
+       // whole path exists to prevent.
+       if (!mounted) return;
+-      setState(() => _msg = 'Could not save your key to the keychain: $e');
++      setState(() => _msg = 'Dein Schlüssel konnte nicht im Schlüsselbund gespeichert werden: $e');
+       return;
+     }
+     if (!mounted) return;
+@@ -109,8 +109,8 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+         // Neutral on purpose: `blindClear` is also true when there is no key at
+         // all, and claiming an existing one was preserved would be a fiction.
+         content: Text(blindClear
+-            ? 'Settings saved. Your API key was not changed.'
+-            : 'AI Coach settings saved.'),
++            ? 'Einstellungen gespeichert. Dein API-Schlüssel wurde nicht geändert.'
++            : 'KI-Coach-Einstellungen gespeichert.'),
+       ),
+     );
+     if (navigator.canPop()) navigator.pop();
+@@ -137,14 +137,14 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+           child: Row(children: [
+             AppIcon(OsIcon.check, size: 14, color: AppColors.coral),
+             const SizedBox(width: Sp.x2),
+-            Expanded(child: Text('Using: $_model',
++            Expanded(child: Text('Verwendet: $_model',
+                 style: AppText.caption.copyWith(color: AppColors.coralInk))),
+           ]),
+         ),
+       if (rows.isEmpty)
+         Text(_models.isEmpty
+-            ? 'Tap Fetch to load your provider’s models — or just type a model id above and it’ll be used as-is.'
+-            : 'No match. Type a full model id to use it as a custom model.',
++            ? 'Tippe auf „Abrufen“, um die Modelle deines Anbieters zu laden — oder gib oben einfach eine Modell-ID ein, sie wird direkt übernommen.'
++            : 'Kein Treffer. Gib eine vollständige Modell-ID ein, um sie als eigenes Modell zu verwenden.',
+             style: AppText.captionMuted)
+       else
+         Container(
+@@ -167,7 +167,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+             AppIcon(OsIcon.edit, size: 13, color: AppColors.inkMuted),
+             const SizedBox(width: Sp.x2),
+           ],
+-          Expanded(child: Text(custom ? 'Use “$id”' : id,
++          Expanded(child: Text(custom ? '„$id“ verwenden' : id,
+               style: AppText.body.copyWith(color: selected ? AppColors.coralInk : AppColors.ink))),
+           if (selected) AppIcon(OsIcon.check, size: 18, color: AppColors.coral),
+         ]),
+@@ -188,23 +188,23 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+             Row(children: [
+               RoundIconButton(OsIcon.arrowLeft, onTap: () => Navigator.of(context).pop()),
+               const SizedBox(width: Sp.x3),
+-              Text('AI Coach', style: AppText.h1),
++              Text('KI-Coach', style: AppText.h1),
+             ]),
+             const SizedBox(height: Sp.x5),
+ 
+             ProCard(child: Row(children: [
+               AppIcon(OsIcon.shield, size: 18, color: AppColors.good),
+               const SizedBox(width: Sp.x3),
+-              Expanded(child: Text('Your key is stored only on this device and is sent '
+-                  'directly to your provider — never to OpenStrap.', style: AppText.captionMuted)),
++              Expanded(child: Text('Dein Schlüssel wird nur auf diesem Gerät gespeichert und '
++                  'direkt an deinen Anbieter gesendet — nie an CM Health.', style: AppText.captionMuted)),
+             ])),
+             const SizedBox(height: Sp.x5),
+ 
+-            const SectionHeader('Provider'),
++            const SectionHeader('Anbieter'),
+             TextField(
+               controller: _base,
+               decoration: const InputDecoration(
+-                labelText: 'Base URL',
++                labelText: 'Basis-URL',
+                 hintText: 'https://api.openai.com/v1',
+               ),
+             ),
+@@ -213,7 +213,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+               controller: _key,
+               obscureText: _obscure,
+               decoration: InputDecoration(
+-                labelText: 'API key',
++                labelText: 'API-Schlüssel',
+                 suffixIcon: IconButton(
+                   icon: AppIcon(_obscure ? OsIcon.info : OsIcon.check, size: 18, color: AppColors.inkMuted),
+                   onPressed: () => setState(() => _obscure = !_obscure),
+@@ -221,18 +221,18 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+               ),
+             ),
+             const SizedBox(height: Sp.x3),
+-            Text('Works with OpenAI, OpenRouter, Groq, Together, local Ollama / LM Studio, '
+-                'and anything OpenAI-compatible.', style: AppText.captionMuted),
++            Text('Funktioniert mit OpenAI, OpenRouter, Groq, Together, lokalem Ollama / LM Studio '
++                'und allem, was OpenAI-kompatibel ist.', style: AppText.captionMuted),
+ 
+             const SizedBox(height: Sp.x5),
+-            const SectionHeader('Model'),
++            const SectionHeader('Modell'),
+             Row(children: [
+               Expanded(child: TextField(
+                 controller: _query,
+                 onChanged: (_) => setState(() {}),
+                 decoration: const InputDecoration(
+-                  labelText: 'Search or type a model',
+-                  hintText: 'e.g. minimax, gpt-4o, llama',
++                  labelText: 'Modell suchen oder eintippen',
++                  hintText: 'z. B. minimax, gpt-4o, llama',
+                 ),
+               )),
+               const SizedBox(width: Sp.x3),
+@@ -240,7 +240,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+                 onPressed: _loadingModels ? null : _fetchModels,
+                 child: _loadingModels
+                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+-                    : const Text('Fetch'),
++                    : const Text('Abrufen'),
+               ),
+             ]),
+             const SizedBox(height: Sp.x3),
+@@ -251,7 +251,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
+             ],
+ 
+             const SizedBox(height: Sp.x7),
+-            FilledButton(onPressed: _save, child: const Text('Save')),
++            FilledButton(onPressed: _save, child: const Text('Speichern')),
+             const SizedBox(height: 60),
+           ],
+         ),
+diff --git a/lib/ui/design/ai_hero.dart b/lib/ui/design/ai_hero.dart
+index 13762b7..d0afddd 100644
+--- a/lib/ui/design/ai_hero.dart
++++ b/lib/ui/design/ai_hero.dart
+@@ -115,8 +115,8 @@ class AiHero extends StatelessWidget {
+                       hasLine
+                           ? line!
+                           : (busy
+-                                ? 'Writing your briefing…'
+-                                : 'Your morning briefing will appear here.'),
++                                ? 'Dein Briefing wird geschrieben…'
++                                : 'Dein Morgen-Briefing erscheint hier.'),
+                       style: hasLine
+                           ? AppText.title.copyWith(height: 1.3)
+                           : AppText.bodySoft.copyWith(
+diff --git a/lib/ui/design/app_scaffold.dart b/lib/ui/design/app_scaffold.dart
+index 89d25d2..c6e9b04 100644
+--- a/lib/ui/design/app_scaffold.dart
++++ b/lib/ui/design/app_scaffold.dart
+@@ -30,7 +30,7 @@ class AppBackButton extends StatelessWidget {
+   Widget build(BuildContext context) {
+     return Semantics(
+       button: true,
+-      label: 'Back',
++      label: 'Zurück',
+       child: Pressable(
+         pressedScale: 0.92,
+         onTap:
+diff --git a/lib/ui/design/disclosure.dart b/lib/ui/design/disclosure.dart
+index 4d74f96..5446b42 100644
+--- a/lib/ui/design/disclosure.dart
++++ b/lib/ui/design/disclosure.dart
+@@ -47,8 +47,8 @@ class Disclosure extends StatefulWidget {
+     required this.summary,
+     this.summaryWidget,
+     required this.child,
+-    this.expandLabel = 'Show detail',
+-    this.collapseLabel = 'Hide detail',
++    this.expandLabel = 'Details anzeigen',
++    this.collapseLabel = 'Details ausblenden',
+     this.initiallyExpanded = false,
+   });
+ 
+diff --git a/lib/ui/design/gallery_screen.dart b/lib/ui/design/gallery_screen.dart
+index 860d998..5ffa94f 100644
+--- a/lib/ui/design/gallery_screen.dart
++++ b/lib/ui/design/gallery_screen.dart
+@@ -31,7 +31,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+   int _nav = 0;
+   int _chip = 0;
+ 
+-  static const _tags = ['Caffeine', 'Alcohol', 'Late meal', 'Travel'];
++  static const _tags = ['Koffein', 'Alkohol', 'Spätes Essen', 'Reisen'];
+   final _tagsOn = <int>{1};
+ 
+   static const _spark = <double?>[
+@@ -69,15 +69,15 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+     final route = _shareRoute;
+     final parts = units.distance(route.distanceMeters).split(' ');
+     return WorkoutShareData(
+-      title: 'Morning Run',
++      title: 'Morgenlauf',
+       subtitle: '27 Jul 2026',
+       vertices: _shareVertices,
+       heroValue: parts.first,
+       heroUnit: parts.length > 1 ? parts.sublist(1).join(' ') : '',
+       stats: [
+-        ('20:06', 'Time'),
++        ('20:06', 'Zeit'),
+         (units.pace(route.distanceMeters, route.movingSec), 'Pace'),
+-        ('11.6', 'Strain'),
++        ('11.6', 'Belastung'),
+       ],
+       accent: AppColors.coral,
+     );
+@@ -136,7 +136,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+     final dark = AppColors.isDark;
+ 
+     return AppScaffold(
+-      title: 'Design system',
++      title: 'Designsystem',
+       subtitle: dark ? 'Ember on Char' : 'Ember on Paper',
+       actions: [
+         if (ctrl != null)
+@@ -198,7 +198,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 ],
+               ),
+               const SizedBox(height: Sp.x4),
+-              Text('HR ZONES', style: AppText.overline),
++              Text('HF-ZONEN', style: AppText.overline),
+               const SizedBox(height: Sp.x2),
+               Row(
+                 children: [
+@@ -272,8 +272,8 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+         const SectionHeader('OrbitScore'),
+         OrbitScore(
+           score: 82,
+-          label: 'Readiness',
+-          word: 'Push',
++          label: 'Tagesform',
++          word: 'Angreifen',
+           wordIcon: OsIcon.intensity,
+           color: AppColors.scoreColor(0.82),
+           glow: true,
+@@ -316,9 +316,9 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 mainAxisSize: MainAxisSize.min,
+                 children: [
+-                  const TileHeader('Sleep'),
++                  const TileHeader('Schlaf'),
+                   const SizedBox(height: Sp.x2),
+-                  const BigStat(value: '7h 42m', caption: 'of 8h 00m need'),
++                  const BigStat(value: '7h 42m', caption: 'von 8h 00m Bedarf'),
+                   const SizedBox(height: Sp.x3),
+                   const StageBars(
+                     awakeMin: 24,
+@@ -339,12 +339,12 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 mainAxisSize: MainAxisSize.min,
+                 children: [
+-                  const TileHeader('Resting HR'),
++                  const TileHeader('Ruhepuls'),
+                   const SizedBox(height: Sp.x2),
+                   const BigStat(
+                     value: '52',
+                     unit: 'bpm',
+-                    caption: '−2 vs normal',
++                    caption: '−2 vs. normal',
+                     captionAccent: true,
+                   ),
+                   const SizedBox(height: Sp.x3),
+@@ -365,9 +365,9 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 mainAxisSize: MainAxisSize.min,
+                 children: [
+-                  TileHeader('Calories'),
++                  TileHeader('Kalorien'),
+                   SizedBox(height: Sp.x2),
+-                  BigStat(value: '640', unit: 'kcal', caption: 'active burn'),
++                  BigStat(value: '640', unit: 'kcal', caption: 'aktiv verbrannt'),
+                 ],
+               ),
+             ),
+@@ -377,7 +377,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 mainAxisSize: MainAxisSize.min,
+                 children: [
+-                  TileHeader('O₂ dips'),
++                  TileHeader('O₂-Abfälle'),
+                   SizedBox(height: Sp.x2),
+                   BigStat.dash(), // honest em-dash
+                 ],
+@@ -404,8 +404,8 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+               HypnoSeg(SleepStage.rem, 0.84, 0.96),
+               HypnoSeg(SleepStage.awake, 0.96, 1.00),
+             ],
+-            startLabel: '11:24 pm',
+-            endLabel: '7:05 am',
++            startLabel: '23:24',
++            endLabel: '7:05',
+           ),
+         ),
+         const SizedBox(height: Sp.x6),
+@@ -428,9 +428,9 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+         Row(
+           children: [
+             for (final (w, i, t) in const [
+-              ('Push', OsIcon.intensity, 0.82),
+-              ('Focus', OsIcon.activity, 0.55),
+-              ('Recover', OsIcon.calm, 0.28),
++              ('Angreifen', OsIcon.intensity, 0.82),
++              ('Fokus', OsIcon.activity, 0.55),
++              ('Erholen', OsIcon.calm, 0.28),
+             ]) ...[
+               StateChipView(
+                 StateChip(w, icon: i),
+@@ -449,10 +449,10 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+           runSpacing: Sp.x2,
+           children: [
+             for (final (i, c) in const [
+-              (0, StateChip('Push', icon: OsIcon.intensity)),
+-              (1, StateChip('Focus', icon: OsIcon.activity)),
+-              (2, StateChip('Recover', icon: OsIcon.calm)),
+-              (3, StateChip('Sleep', icon: OsIcon.sleep)),
++              (0, StateChip('Angreifen', icon: OsIcon.intensity)),
++              (1, StateChip('Fokus', icon: OsIcon.activity)),
++              (2, StateChip('Erholen', icon: OsIcon.calm)),
++              (3, StateChip('Schlaf', icon: OsIcon.sleep)),
+             ])
+               StateChipView(
+                 c,
+@@ -483,9 +483,9 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+         const SectionHeader('MedalCard'),
+         MedalCard(
+           medal: '5K',
+-          overline: 'Personal record',
+-          title: 'Fastest 5k — 24:31',
+-          subtitle: 'Tuesday morning run',
++          overline: 'Persönlicher Rekord',
++          title: 'Schnellste 5 km — 24:31',
++          subtitle: 'Lauf am Dienstagmorgen',
+           onTap: () {},
+         ),
+         const SizedBox(height: Sp.x6),
+@@ -493,10 +493,10 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+         // ── AiHero ────────────────────────────────────────────────────
+         const SectionHeader('AiHero'),
+         AiHero(
+-          overline: 'Good morning',
+-          line: 'Solid recovery — a strong day to push your intervals.',
+-          hint: 'Ask about your day…',
+-          cta: 'Tap for the breakdown',
++          overline: 'Guten Morgen',
++          line: 'Solide Erholung — ein starker Tag, um deine Intervalle zu pushen.',
++          hint: 'Frag zu deinem Tag…',
++          cta: 'Tippe für die Details',
+           onTap: () {},
+           onAsk: () {},
+         ),
+@@ -509,7 +509,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+             BentoItem.wide(
+               MetricCard(
+                 hero: true,
+-                label: 'Readiness',
++                label: 'Tagesform',
+                 value: '82',
+                 unit: '%',
+                 animateFrom: 82,
+@@ -518,22 +518,22 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 delta: const BaselineDeltaChip(4, goodIsUp: true),
+                 spark: const [61.0, 70, 64, 72, 68, 75, 82],
+                 info: const MetricInfo(
+-                  title: 'Readiness',
++                  title: 'Tagesform',
+                   body:
+-                      'One 0–100 score fusing overnight HRV, resting heart rate, '
+-                      'sleep debt and recent strain against your own baselines.',
++                      'Ein Score von 0–100, der nächtliche HRV, Ruhepuls, '
++                      'Schlafdefizit und jüngste Belastung mit deinen eigenen Basiswerten verrechnet.',
+                   bullets: [
+-                    'Above your baseline → primed for load',
+-                    'Persistently low → prioritise recovery',
++                    'Über deinem Basiswert → bereit für Belastung',
++                    'Dauerhaft niedrig → Erholung priorisieren',
+                   ],
+-                  methodNote: 'Composite z-score vs your 30-day baselines',
++                  methodNote: 'Kombinierter z-Score vs. deine 30-Tage-Basiswerte',
+                 ),
+                 onTap: () {},
+               ),
+             ),
+             BentoItem(
+               MetricCard(
+-                label: 'Resting HR',
++                label: 'Ruhepuls',
+                 value: '52',
+                 unit: 'bpm',
+                 animateFrom: 52,
+@@ -545,8 +545,8 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 ),
+                 spark: _spark,
+                 info: const MetricInfo(
+-                  title: 'Resting heart rate',
+-                  body: 'Your lowest stable overnight heart rate.',
++                  title: 'Ruhepuls',
++                  body: 'Deine niedrigste stabile Herzfrequenz über Nacht.',
+                 ),
+                 onTap: () {},
+               ),
+@@ -570,7 +570,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+             ),
+             BentoItem(
+               MetricCard(
+-                label: 'Sleep',
++                label: 'Schlaf',
+                 value: '7:42',
+                 delta: const DeltaChip(6.5),
+                 onTap: () {},
+@@ -578,7 +578,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+             ),
+             const BentoItem(
+               MetricCard(
+-                label: 'Skin temp',
++                label: 'Hauttemp.',
+                 value: null, // honest null → em-dash
+               ),
+             ),
+@@ -599,7 +599,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                     size: 120,
+                     stroke: 12,
+                     valueText: '82',
+-                    label: 'ready',
++                    label: 'bereit',
+                     endDot: true,
+                   ),
+                   ArcGauge(
+@@ -609,7 +609,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                     sweepFraction: 0.75,
+                     color: AppColors.warn,
+                     valueText: '12.8',
+-                    label: 'strain',
++                    label: 'Belastung',
+                     target: 0.8,
+                     endDot: true,
+                   ),
+@@ -684,7 +684,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+             crossAxisAlignment: CrossAxisAlignment.start,
+             children: [
+               SegmentedControl(
+-                options: const ['Day', 'Week', 'Month', '6M'],
++                options: const ['Tag', 'Woche', 'Monat', '6M'],
+                 index: _seg,
+                 expanded: true,
+                 onChanged: (i) => setState(() => _seg = i),
+@@ -695,10 +695,10 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 runSpacing: Sp.x2,
+                 children: [
+                   StatusChip('Neutral'),
+-                  StatusChip('Synced', tone: ChipTone.positive),
+-                  StatusChip('In zone 3', tone: ChipTone.accent),
+-                  StatusChip('Low battery', tone: ChipTone.warn),
+-                  StatusChip('No signal', tone: ChipTone.critical),
++                  StatusChip('Synchronisiert', tone: ChipTone.positive),
++                  StatusChip('In Zone 3', tone: ChipTone.accent),
++                  StatusChip('Akku schwach', tone: ChipTone.warn),
++                  StatusChip('Kein Signal', tone: ChipTone.critical),
+                 ],
+               ),
+               const SizedBox(height: Sp.x4),
+@@ -707,7 +707,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 runSpacing: Sp.x2,
+                 crossAxisAlignment: WrapCrossAlignment.center,
+                 children: [
+-                  const PrBadge('PR · fastest 5k'),
++                  const PrBadge('PR · schnellste 5 km'),
+                   const Tag('est'),
+                   Tag('rel', color: AppColors.loadDetraining),
+                   Tag('beta', color: AppColors.coral),
+@@ -719,17 +719,17 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 ],
+               ),
+               const SizedBox(height: Sp.x4),
+-              const ProgressPill(0.7, label: 'Goal'),
++              const ProgressPill(0.7, label: 'Ziel'),
+               const SizedBox(height: Sp.x3),
+               Row(
+                 children: [
+                   const Expanded(child: ProgressPill(0.35, height: 8)),
+                   const SizedBox(width: Sp.x3),
+                   InfoDot(
+-                    title: 'The (i) affordance',
++                    title: 'Das (i)-Element',
+                     body:
+-                        'Every explanatory sentence in the app lives behind one '
+-                        'of these — the main view stays numbers-first.',
++                        'Jeder erklärende Satz in der App steckt hinter einem '
++                        'davon — die Hauptansicht bleibt auf Zahlen fokussiert.',
+                   ),
+                 ],
+               ),
+@@ -751,20 +751,20 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+                 icon: OsIcon.wear,
+                 iconColor: AppColors.accent,
+                 title: 'WHOOP 4.0',
+-                subtitle: 'Connected · 74%',
++                subtitle: 'Verbunden · 74%',
+                 divider: true,
+                 onTap: () {},
+               ),
+               ListRow(
+                 icon: OsIcon.sleep,
+-                title: 'Sleep',
++                title: 'Schlaf',
+                 value: '7 h 42 m',
+                 divider: true,
+                 onTap: () {},
+               ),
+               ListRow(
+                 icon: OsIcon.run,
+-                title: 'Morning run',
++                title: 'Morgenlauf',
+                 subtitle: '5.2 km · 27:40',
+                 trailing: const StatusChip('Zone 4', tone: ChipTone.accent),
+                 onTap: () {},
+@@ -780,9 +780,9 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+         const SizedBox(height: Sp.x3),
+         StateCard(
+           icon: OsIcon.bluetooth,
+-          title: 'Nothing yet',
+-          message: 'Wear your strap tonight and sync in the morning.',
+-          actionLabel: 'Sync now',
++          title: 'Noch nichts da',
++          message: 'Trag dein Band heute Nacht und synchronisiere am Morgen.',
++          actionLabel: 'Jetzt synchronisieren',
+           onAction: () {},
+         ),
+         const SizedBox(height: Sp.x6),
+@@ -866,10 +866,10 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
+         const SectionHeader('FloatingNavPill'),
+         FloatingNavPill(
+           items: const [
+-            NavPillItem(OsIcon.today, 'Today'),
+-            NavPillItem(OsIcon.sleep, 'Sleep'),
+-            NavPillItem(OsIcon.heart, 'Heart'),
+-            NavPillItem(OsIcon.bodyStrain, 'Body'),
++            NavPillItem(OsIcon.today, 'Heute'),
++            NavPillItem(OsIcon.sleep, 'Schlaf'),
++            NavPillItem(OsIcon.heart, 'Herz'),
++            NavPillItem(OsIcon.bodyStrain, 'Körper'),
+             NavPillItem(OsIcon.workouts, 'Workouts'),
+           ],
+           index: _nav,
+diff --git a/lib/ui/design/hypnogram.dart b/lib/ui/design/hypnogram.dart
+index 128fb09..0d0da21 100644
+--- a/lib/ui/design/hypnogram.dart
++++ b/lib/ui/design/hypnogram.dart
+@@ -16,10 +16,10 @@ Color stageColor(SleepStage s) => switch (s) {
+ };
+ 
+ String stageName(SleepStage s) => switch (s) {
+-  SleepStage.awake => 'Awake',
++  SleepStage.awake => 'Wach',
+   SleepStage.rem => 'REM',
+-  SleepStage.light => 'Light',
+-  SleepStage.deep => 'Deep',
++  SleepStage.light => 'Leicht',
++  SleepStage.deep => 'Tief',
+ };
+ 
+ /// One hypnogram segment over normalized night time (0..1).
+@@ -168,10 +168,10 @@ class Hypnogram extends StatelessWidget {
+                   mainAxisAlignment: MainAxisAlignment.spaceAround,
+                   crossAxisAlignment: CrossAxisAlignment.start,
+                   children: [
+-                    Text('Awake', style: AppText.captionMuted.copyWith(fontSize: 10)),
++                    Text('Wach', style: AppText.captionMuted.copyWith(fontSize: 10)),
+                     Text('REM', style: AppText.captionMuted.copyWith(fontSize: 10)),
+-                    Text('Light', style: AppText.captionMuted.copyWith(fontSize: 10)),
+-                    Text('Deep', style: AppText.captionMuted.copyWith(fontSize: 10)),
++                    Text('Leicht', style: AppText.captionMuted.copyWith(fontSize: 10)),
++                    Text('Tief', style: AppText.captionMuted.copyWith(fontSize: 10)),
+                   ],
+                 ),
+               ),
+@@ -285,8 +285,8 @@ class StageBars extends StatelessWidget {
+               child: Text(
+                 absent
+                     ? (stage == SleepStage.deep
+-                        ? 'none detected · low-confidence estimate'
+-                        : 'none detected')
++                        ? 'nicht erkannt · unsichere Schätzung'
++                        : 'nicht erkannt')
+                     : '$pct% (${hm(mins)})',
+                 style: AppText.captionMuted,
+                 maxLines: 1,
+diff --git a/lib/ui/design/recap_card.dart b/lib/ui/design/recap_card.dart
+index a94c763..f170d0c 100644
+--- a/lib/ui/design/recap_card.dart
++++ b/lib/ui/design/recap_card.dart
+@@ -29,7 +29,7 @@ class MedalCard extends StatelessWidget {
+     super.key,
+     required this.medal,
+     required this.title,
+-    this.overline = 'Achievement',
++    this.overline = 'Erfolg',
+     this.subtitle,
+     this.onTap,
+   });
+diff --git a/lib/ui/design/ring_week.dart b/lib/ui/design/ring_week.dart
+index 436c2be..e20d967 100644
+--- a/lib/ui/design/ring_week.dart
++++ b/lib/ui/design/ring_week.dart
+@@ -35,7 +35,7 @@ class RingWeek extends StatelessWidget {
+     this.labels,
+   });
+ 
+-  static const _days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
++  static const _days = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+ 
+   @override
+   Widget build(BuildContext context) {
+diff --git a/lib/ui/design/sync_dot.dart b/lib/ui/design/sync_dot.dart
+index 16c9966..25f967f 100644
+--- a/lib/ui/design/sync_dot.dart
++++ b/lib/ui/design/sync_dot.dart
+@@ -82,7 +82,7 @@ class _SyncDotState extends State<SyncDot>
+       child: !widget.active
+           ? const SizedBox.shrink()
+           : Semantics(
+-              label: 'Syncing with your band',
++              label: 'Wird mit deinem Band synchronisiert',
+               liveRegion: true,
+               child: FadeTransition(
+                 opacity: Tween<double>(begin: 0.25, end: 1).animate(
+diff --git a/lib/ui/stress/breath_phases.dart b/lib/ui/stress/breath_phases.dart
+index a5f1e70..cd2224a 100644
+--- a/lib/ui/stress/breath_phases.dart
++++ b/lib/ui/stress/breath_phases.dart
+@@ -25,12 +25,12 @@ enum BreathPhaseKind {
+ 
+ extension BreathPhaseKindLabel on BreathPhaseKind {
+   String get label => switch (this) {
+-    BreathPhaseKind.inhale => 'Inhale',
+-    BreathPhaseKind.holdIn => 'Hold',
+-    BreathPhaseKind.exhale => 'Exhale',
+-    BreathPhaseKind.holdOut => 'Hold',
+-    BreathPhaseKind.work => 'Work',
+-    BreathPhaseKind.rest => 'Rest',
++    BreathPhaseKind.inhale => 'Einatmen',
++    BreathPhaseKind.holdIn => 'Halten',
++    BreathPhaseKind.exhale => 'Ausatmen',
++    BreathPhaseKind.holdOut => 'Halten',
++    BreathPhaseKind.work => 'Arbeit',
++    BreathPhaseKind.rest => 'Pause',
+   };
+ 
+   /// Whether the visual should be expanding, contracting, or still. Holds are
+@@ -95,9 +95,9 @@ class BreathPattern {
+ /// with a coherence score attached.
+ const _resonance = BreathPattern(
+   key: 'resonance',
+-  label: 'Resonance',
+-  description: 'Even in and out at about 5.5 breaths a minute. The one with a '
+-      'coherence score.',
++  label: 'Resonanz',
++  description: 'Gleichmäßig ein und aus, etwa 5,5 Atemzüge pro Minute. Das '
++      'Muster mit Kohärenz-Score.',
+   phases: [
+     BreathPhase(BreathPhaseKind.inhale, 5.45),
+     BreathPhase(BreathPhaseKind.exhale, 5.45),
+@@ -110,8 +110,8 @@ const kBreathPatterns = <BreathPattern>[
+   BreathPattern(
+     key: 'box',
+     label: 'Box',
+-    description: 'Four counts each way, holds included. Steadying when your '
+-        'head is racing.',
++    description: 'Vier Zähler pro Phase, inklusive Halten. Beruhigt, wenn '
++        'dein Kopf rast.',
+     phases: [
+       BreathPhase(BreathPhaseKind.inhale, 4),
+       BreathPhase(BreathPhaseKind.holdIn, 4),
+@@ -122,8 +122,8 @@ const kBreathPatterns = <BreathPattern>[
+   BreathPattern(
+     key: 'four_seven_eight',
+     label: '4-7-8',
+-    description: 'A long hold and a longer exhale. Usually used to get to '
+-        'sleep.',
++    description: 'Langes Halten und noch längeres Ausatmen. Wird meist zum '
++        'Einschlafen genutzt.',
+     phases: [
+       BreathPhase(BreathPhaseKind.inhale, 4),
+       BreathPhase(BreathPhaseKind.holdIn, 7),
+@@ -132,9 +132,9 @@ const kBreathPatterns = <BreathPattern>[
+   ),
+   BreathPattern(
+     key: 'extended_exhale',
+-    label: 'Long exhale',
+-    description: 'Out for twice as long as in. No holds, so it is easy to keep '
+-        'up for a while.',
++    label: 'Langes Ausatmen',
++    description: 'Doppelt so lange aus- wie einatmen. Ohne Halten, dadurch '
++        'gut länger durchzuhalten.',
+     phases: [
+       BreathPhase(BreathPhaseKind.inhale, 4),
+       BreathPhase(BreathPhaseKind.exhale, 8),
+@@ -181,8 +181,8 @@ BreathPattern intervalPattern({
+   required Duration rest,
+ }) => BreathPattern(
+   key: 'interval',
+-  label: 'Interval',
+-  description: 'Work and rest, buzzed at each change.',
++  label: 'Intervall',
++  description: 'Arbeit und Pause, mit Vibration bei jedem Wechsel.',
+   phases: [
+     BreathPhase(BreathPhaseKind.work, work.inMilliseconds / 1000),
+     if (rest > Duration.zero)
+diff --git a/lib/ui/stress/calm_breathing_screen.dart b/lib/ui/stress/calm_breathing_screen.dart
+index 750ac42..90064aa 100644
+--- a/lib/ui/stress/calm_breathing_screen.dart
++++ b/lib/ui/stress/calm_breathing_screen.dart
+@@ -291,8 +291,8 @@ class _CalmBreathingViewState extends State<CalmBreathingView>
+               padding: const EdgeInsets.symmetric(horizontal: Sp.x8),
+               child: Text(
+                 widget.active
+-                    ? 'Follow the circle. Your strap buzzes each change, so '
+-                          'you can close your eyes.'
++                    ? 'Folge dem Kreis. Dein Band vibriert bei jedem Wechsel — '
++                          'du kannst also die Augen schließen.'
+                     : _pattern.description,
+                 style: AppText.bodySoft,
+                 textAlign: TextAlign.center,
+@@ -313,7 +313,7 @@ class _CalmBreathingViewState extends State<CalmBreathingView>
+                 )),
+               const SizedBox(height: Sp.x5),
+               if (_pattern.coherenceRated) ...[
+-                Text('Coherence Score', style: AppText.caption),
++                Text('Kohärenz-Score', style: AppText.caption),
+                 const SizedBox(height: Sp.x2),
+                 if (_hasResult)
+                   Text(
+@@ -328,7 +328,7 @@ class _CalmBreathingViewState extends State<CalmBreathingView>
+                   // Honest: no fabricated number until enough clean live RR
+                   // has accumulated (first recompute lands ~20s in).
+                   Text(
+-                    'Calibrating…',
++                    'Kalibrierung…',
+                     style: AppText.h2.copyWith(color: AppColors.inkMuted),
+                   ),
+               ] else
+@@ -338,8 +338,8 @@ class _CalmBreathingViewState extends State<CalmBreathingView>
+                 Padding(
+                   padding: const EdgeInsets.symmetric(horizontal: Sp.x8),
+                   child: Text(
+-                    'No coherence score for this pattern — it only means '
+-                    'something for resonance breathing.',
++                    'Kein Kohärenz-Score für dieses Muster — er ist nur bei '
++                    'Resonanzatmung aussagekräftig.',
+                     style: AppText.captionMuted,
+                     textAlign: TextAlign.center,
+                   ),
+@@ -347,7 +347,7 @@ class _CalmBreathingViewState extends State<CalmBreathingView>
+               const SizedBox(height: Sp.x8),
+               OutlinedButton(
+                 onPressed: widget.onStop,
+-                child: const Text('Stop Session'),
++                child: const Text('Session beenden'),
+               ),
+             ] else ...[
+               _patternPicker(),
+@@ -363,14 +363,14 @@ class _CalmBreathingViewState extends State<CalmBreathingView>
+                     : null,
+                 child: Text(
+                   _minutes == null
+-                      ? 'Begin'
+-                      : 'Begin $_minutes-Minute Session',
++                      ? 'Starten'
++                      : '$_minutes-Minuten-Session starten',
+                 ),
+               ),
+               if (!widget.connected || widget.error != null) ...[
+                 const SizedBox(height: Sp.x3),
+                 Text(
+-                  widget.error ?? 'Connect your band to start a session.',
++                  widget.error ?? 'Verbinde dein Band, um eine Session zu starten.',
+                   style: AppText.captionMuted,
+                   textAlign: TextAlign.center,
+                 ),
+@@ -406,7 +406,7 @@ class _CalmBreathingViewState extends State<CalmBreathingView>
+         child: Transform.scale(
+           scale: 1.0 / scale, // keep the text unscaled
+           child: Text(
+-            widget.active ? (kind?.label ?? '') : 'Ready',
++            widget.active ? (kind?.label ?? '') : 'Bereit',
+             style: AppText.h2.copyWith(color: DomainAccent.recovery),
+           ),
+         ),
+@@ -438,7 +438,7 @@ class _CalmBreathingViewState extends State<CalmBreathingView>
+     children: [
+       for (final m in _durationChoices)
+         ToggleChip(
+-          m == null ? 'Open' : '$m min',
++          m == null ? 'Offen' : '$m min',
+           selected: _minutes == m,
+           onTap: () => setState(() => _minutes = m),
+         ),
+diff --git a/lib/ui/stress/interval_timer_screen.dart b/lib/ui/stress/interval_timer_screen.dart
+index cf9ab9b..9c103cc 100644
+--- a/lib/ui/stress/interval_timer_screen.dart
++++ b/lib/ui/stress/interval_timer_screen.dart
+@@ -140,7 +140,7 @@ class _IntervalTimerScreenState extends State<IntervalTimerScreen>
+           );
+ 
+     return AppScaffold(
+-      title: 'Interval timer',
++      title: 'Intervall-Timer',
+       body: SingleChildScrollView(
+         padding: EdgeInsets.fromLTRB(
+           Sp.screen,
+@@ -173,33 +173,33 @@ class _IntervalTimerScreenState extends State<IntervalTimerScreen>
+               Center(
+                 child: Text(
+                   _rounds == null
+-                      ? 'Round ${(at?.cycle ?? 0) + 1}'
+-                      : 'Round ${(at?.cycle ?? 0) + 1} of $_rounds',
++                      ? 'Runde ${(at?.cycle ?? 0) + 1}'
++                      : 'Runde ${(at?.cycle ?? 0) + 1} von $_rounds',
+                   style: AppText.bodySoft,
+                 ),
+               ),
+               const SizedBox(height: Sp.x8),
+-              OutlinedButton(onPressed: _stop, child: const Text('Stop')),
++              OutlinedButton(onPressed: _stop, child: const Text('Stopp')),
+             ] else ...[
+-              _label('Work'),
++              _label('Arbeit'),
+               _chips(
+                 _workChoices.map((s) => (s, _durLabel(s))).toList(),
+                 _work,
+                 (v) => setState(() => _work = v),
+               ),
+               const SizedBox(height: Sp.x4),
+-              _label('Rest'),
++              _label('Pause'),
+               _chips(
+                 _restChoices
+-                    .map((s) => (s, s == 0 ? 'None' : _durLabel(s)))
++                    .map((s) => (s, s == 0 ? 'Keine' : _durLabel(s)))
+                     .toList(),
+                 _rest,
+                 (v) => setState(() => _rest = v),
+               ),
+               const SizedBox(height: Sp.x4),
+-              _label('Rounds'),
++              _label('Runden'),
+               _chips(
+-                _roundChoices.map((r) => (r, r?.toString() ?? 'Open')).toList(),
++                _roundChoices.map((r) => (r, r?.toString() ?? 'Offen')).toList(),
+                 _rounds,
+                 (v) => setState(() => _rounds = v),
+               ),
+@@ -211,10 +211,11 @@ class _IntervalTimerScreenState extends State<IntervalTimerScreen>
+               const SizedBox(height: Sp.x3),
+               Text(
+                 connected
+-                    ? 'Your strap buzzes at every change, so you can leave the '
+-                          'phone alone. Nothing is recorded — start a workout '
+-                          'if you want the session logged.'
+-                    : 'Connect your band — the buzz is the point.',
++                    ? 'Dein Band vibriert bei jedem Wechsel — du kannst das '
++                          'Handy also weglegen. Nichts wird aufgezeichnet — '
++                          'starte ein Workout, wenn du die Session '
++                          'protokollieren willst.'
++                    : 'Verbinde dein Band — auf die Vibration kommt es an.',
+                 style: AppText.captionMuted,
+                 textAlign: TextAlign.center,
+               ),
+diff --git a/lib/ui/stress/stress_screen.dart b/lib/ui/stress/stress_screen.dart
+index ac81e52..c770dc9 100644
+--- a/lib/ui/stress/stress_screen.dart
++++ b/lib/ui/stress/stress_screen.dart
+@@ -45,7 +45,7 @@ class _StressScreenState extends State<StressScreen> {
+     if (api == null) {
+       setState(() {
+         _phase = _Phase.error;
+-        _error = 'Not signed in.';
++        _error = 'Nicht angemeldet.';
+       });
+       return;
+     }
+@@ -81,8 +81,8 @@ class _StressScreenState extends State<StressScreen> {
+               NotificationEvent(
+                 dedupeKey: '${widget.date}:high_stress',
+                 category: NotifCategory.health,
+-                title: 'High Stress Detected',
+-                body: 'Your stress score is $score. Consider taking a moment to breathe.',
++                title: 'Hoher Stress erkannt',
++                body: 'Dein Stress-Score liegt bei $score. Nimm dir einen Moment zum Atmen.',
+                 date: widget.date,
+               ),
+             );
+@@ -98,8 +98,8 @@ class _StressScreenState extends State<StressScreen> {
+     }
+   }
+ 
+-  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
++  static const _months = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
++  static const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+   String _prettyDate() {
+     final p = widget.date.split('-');
+     if (p.length != 3) return widget.date;
+@@ -124,21 +124,21 @@ class _StressScreenState extends State<StressScreen> {
+         ] else if (_phase == _Phase.empty)
+           StateCard(
+             icon: OsIcon.heartRate,
+-            title: 'No stress reading for this day',
++            title: 'Keine Stress-Messung für diesen Tag',
+             message:
+-                'Stress is computed from your overnight HRV (beat-to-beat '
+-                'heart data). Wear your strap through the night and sync — it '
+-                'needs a few nights of baseline before it can score you '
+-                'against your own normal.',
+-            actionLabel: 'Try again',
++                'Stress wird aus deiner nächtlichen HRV berechnet (Herzdaten '
++                'Schlag für Schlag). Trage dein Band über Nacht und '
++                'synchronisiere — es braucht ein paar Nächte Baseline, bevor '
++                'es dich an deinem eigenen Normal messen kann.',
++            actionLabel: 'Erneut versuchen',
+             onAction: _load,
+           )
+         else if (_phase == _Phase.error)
+           StateCard(
+             icon: OsIcon.sync,
+-            title: "Couldn't load stress",
+-            message: _error ?? 'Please try again.',
+-            actionLabel: 'Try again',
++            title: 'Stress konnte nicht geladen werden',
++            message: _error ?? 'Bitte versuche es erneut.',
++            actionLabel: 'Erneut versuchen',
+             onAction: _load,
+           )
+         else
+@@ -193,21 +193,21 @@ class StressDayContent extends StatelessWidget {
+   }
+ 
+   String _word(int v) => v < 25
+-      ? 'Calm'
++      ? 'Ruhig'
+       : v < 50
+-          ? 'Settled'
++          ? 'Gelassen'
+           : v < 75
+-              ? 'Elevated'
+-              : 'High';
++              ? 'Erhöht'
++              : 'Hoch';
+ 
+   /// The relief line — what to do with this number, one sentence.
+   String _relief(int v) => v < 25
+-      ? 'Your system is settled — a good day to take on load.'
++      ? 'Dein System ist entspannt — ein guter Tag, um Belastung anzugehen.'
+       : v < 50
+-          ? 'Normal daily activation. Nothing to manage here.'
++          ? 'Normale Alltagsaktivierung. Hier gibt es nichts zu tun.'
+           : v < 75
+-              ? 'Running warm — slow breaths, a walk or daylight all help it settle.'
+-              : 'High sympathetic load — favour easy movement and an early night.';
++              ? 'Leicht erhöht — langsames Atmen, ein Spaziergang oder Tageslicht helfen beim Runterkommen.'
++              : 'Hohe sympathische Last — setze auf lockere Bewegung und einen frühen Abend.';
+ 
+   String _hm(int m) {
+     if (m <= 0) return '0m';
+@@ -272,11 +272,12 @@ class StressDayContent extends StatelessWidget {
+             InfoDot(
+               title: 'Stress',
+               body:
+-                  'Sympathetic "fight-or-flight" activation read from your '
+-                  'overnight HRV (Baevsky Stress Index), scored against your '
+-                  'own baseline — a body signal, not a mood. It needs a few '
+-                  'nights of HRV to be meaningful.',
+-              methodNote: 'Baevsky SI vs your rolling baseline · 0–100',
++                  'Sympathische "Fight-or-Flight"-Aktivierung, gelesen aus '
++                  'deiner nächtlichen HRV (Baevsky-Stress-Index), bewertet '
++                  'gegen deine eigene Baseline — ein Körpersignal, keine '
++                  'Stimmung. Es braucht ein paar Nächte HRV, um aussagekräftig '
++                  'zu sein.',
++              methodNote: 'Baevsky-SI vs. deine rollierende Baseline · 0–100',
+             ),
+           ],
+         ),
+@@ -314,7 +315,7 @@ class StressDayContent extends StatelessWidget {
+                   ),
+                 );
+               },
+-              child: const Text('Calm yourself'),
++              child: const Text('Komm zur Ruhe'),
+             ),
+           ),
+         const SizedBox(height: Sp.x2),
+@@ -340,12 +341,13 @@ class StressDayContent extends StatelessWidget {
+           mainAxisSize: MainAxisSize.min,
+           children: [
+             TileHeader(
+-              'Stress index',
++              'Stress-Index',
+               trailing: InfoDot(
+-                title: 'Stress index (Baevsky)',
++                title: 'Stress-Index (Baevsky)',
+                 body:
+-                    'Baevsky SI from your HRV — higher means more sympathetic '
+-                    'activation. Scored vs your own baseline.',
++                    'Baevsky-SI aus deiner HRV — höher bedeutet mehr '
++                    'sympathische Aktivierung. Bewertet gegen deine eigene '
++                    'Baseline.',
+               ),
+             ),
+             const SizedBox(height: Sp.x2),
+@@ -365,7 +367,7 @@ class StressDayContent extends StatelessWidget {
+                 trailing: InfoDot(title: 'RMSSD', body: infoFor('rmssd')!),
+               ),
+               const SizedBox(height: Sp.x2),
+-              BigStat(value: '$rmssd', unit: 'ms', caption: 'this read'),
++              BigStat(value: '$rmssd', unit: 'ms', caption: 'diese Messung'),
+             ],
+           ),
+         ),
+@@ -381,12 +383,12 @@ class StressDayContent extends StatelessWidget {
+               TileHeader(
+                 'LF / HF',
+                 trailing: InfoDot(
+-                  title: 'Sympatho-vagal balance',
++                  title: 'Sympathovagale Balance',
+                   body: infoFor('lf_hf')!,
+                 ),
+               ),
+               const SizedBox(height: Sp.x2),
+-              BigStat(value: '$lfhf', caption: 'balance'),
++              BigStat(value: '$lfhf', caption: 'Balance'),
+             ],
+           ),
+         ),
+@@ -399,21 +401,21 @@ class StressDayContent extends StatelessWidget {
+             mainAxisSize: MainAxisSize.min,
+             children: [
+               TileHeader(
+-                'Daytime HRV',
++                'HRV am Tag',
+                 trailing: InfoDot(
+-                  title: 'Daytime HRV',
++                  title: 'HRV am Tag',
+                   body:
+-                      'Heart-rate variability across your waking hours '
+-                      '(ultradian rhythm), excluding your main sleep. Higher '
+-                      'generally means more recovered / parasympathetic.',
+-                  methodNote: '$dayN five-minute windows with enough beats',
++                      'Herzfrequenzvariabilität über deine wachen Stunden '
++                      '(ultradianer Rhythmus), ohne deinen Hauptschlaf. Höher '
++                      'bedeutet in der Regel erholter / parasympathischer.',
++                  methodNote: '$dayN Fünf-Minuten-Fenster mit genug Herzschlägen',
+                 ),
+               ),
+               const SizedBox(height: Sp.x2),
+               BigStat(
+                 value: '$dayMed',
+                 unit: 'ms',
+-                caption: 'median · $dayN windows',
++                caption: 'Median · $dayN Fenster',
+               ),
+             ],
+           ),
+@@ -431,7 +433,7 @@ class StressDayContent extends StatelessWidget {
+     if (!detailedAvailable(date)) {
+       return const [
+         SizedBox(height: Sp.x3),
+-        DetailRetentionNote(what: 'the minute-by-minute heart rate'),
++        DetailRetentionNote(what: 'minutengenaue Herzfrequenz'),
+       ];
+     }
+     final hr = _hr;
+@@ -444,12 +446,12 @@ class StressDayContent extends StatelessWidget {
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: [
+             TileHeader(
+-              'Through the day',
++              'Im Tagesverlauf',
+               trailing: InfoDot(
+-                title: 'Through the day',
++                title: 'Im Tagesverlauf',
+                 body:
+-                    'Your heart rate across the day — shown as context for the '
+-                    'stress score, not what it is computed from.',
++                    'Deine Herzfrequenz über den Tag — als Kontext zum '
++                    'Stress-Score, nicht seine Berechnungsgrundlage.',
+               ),
+             ),
+             const SizedBox(height: Sp.x3),
+@@ -479,7 +481,7 @@ class StressDayContent extends StatelessWidget {
+     final stillMin = _num(rest['longest_still_min'])?.toInt();
+     return [
+       const SizedBox(height: Sp.x6),
+-      const SectionHeader('Overnight arousal'),
++      const SectionHeader('Nächtliche Aktivierung'),
+       BentoColumns(
+         left: [
+           BentoTile(
+@@ -490,12 +492,13 @@ class StressDayContent extends StatelessWidget {
+               mainAxisSize: MainAxisSize.min,
+               children: [
+                 TileHeader(
+-                  'Sleep stress',
++                  'Schlafstress',
+                   trailing: InfoDot(
+-                    title: 'Sleep stress',
++                    title: 'Schlafstress',
+                     body:
+-                        'Possible arousals overnight — brief heart-rate surges '
+-                        'with movement during sleep. Not nightmares.',
++                        'Mögliche Arousals in der Nacht — kurze '
++                        'Herzfrequenz-Anstiege mit Bewegung im Schlaf. Keine '
++                        'Albträume.',
+                   ),
+                 ),
+                 const SizedBox(height: Sp.x2),
+@@ -503,7 +506,7 @@ class StressDayContent extends StatelessWidget {
+                   value: '$sleepScore',
+                   unit: '/100',
+                   caption: arousals > 0 || restless > 0
+-                      ? '$arousals events · ${_hm(restless)}'
++                      ? '$arousals Ereignisse · ${_hm(restless)}'
+                       : null,
+                 ),
+               ],
+@@ -519,21 +522,21 @@ class StressDayContent extends StatelessWidget {
+                 mainAxisSize: MainAxisSize.min,
+                 children: [
+                   TileHeader(
+-                    'Restlessness',
++                    'Unruhe',
+                     trailing: InfoDot(
+-                      title: 'Restlessness',
++                      title: 'Unruhe',
+                       body:
+-                          'How fragmented the night was — the number of times '
+-                          'you shifted, and your longest unbroken still '
+-                          'stretch.',
++                          'Wie fragmentiert die Nacht war — wie oft du dich '
++                          'bewegt hast und deine längste ununterbrochene '
++                          'ruhige Phase.',
+                     ),
+                   ),
+                   const SizedBox(height: Sp.x2),
+                   BigStat(
+                     value: '$bouts',
+                     caption: stillMin != null
+-                        ? 'shifts · ${_hm(stillMin)} still'
+-                        : 'shifts',
++                        ? 'Bewegungen · ${_hm(stillMin)} ruhig'
++                        : 'Bewegungen',
+                   ),
+                 ],
+               ),
+@@ -548,7 +551,7 @@ class StressDayContent extends StatelessWidget {
+     if (d.isEmpty) return const [];
+     return [
+       const SizedBox(height: Sp.x6),
+-      const SectionHeader('What affected this'),
++      const SectionHeader('Was sich ausgewirkt hat'),
+       SurfaceCard(
+         padding: const EdgeInsets.symmetric(
+           horizontal: Sp.x4,
+diff --git a/lib/ui/today/ai_summary_card.dart b/lib/ui/today/ai_summary_card.dart
+index d2db2db..c543e70 100644
+--- a/lib/ui/today/ai_summary_card.dart
++++ b/lib/ui/today/ai_summary_card.dart
+@@ -34,9 +34,9 @@ class AiSummaryCard extends StatelessWidget {
+ 
+   String get _greeting {
+     final h = DateTime.now().hour;
+-    if (h < 12) return 'Good morning';
+-    if (h < 18) return 'Good afternoon';
+-    return 'Good evening';
++    if (h < 12) return 'Guten Morgen';
++    if (h < 18) return 'Guten Tag';
++    return 'Guten Abend';
+   }
+ 
+   @override
+@@ -48,7 +48,7 @@ class AiSummaryCard extends StatelessWidget {
+       busy: busy,
+       cta: onTap == null
+           ? null
+-          : (hasSummary ? 'Tap for the breakdown' : 'Tap to generate'),
++          : (hasSummary ? 'Tippen für die Analyse' : 'Tippen zum Generieren'),
+       onTap: onTap,
+     );
+   }
+diff --git a/lib/ui/today/step_goal_screen.dart b/lib/ui/today/step_goal_screen.dart
+index 322d0f2..8c98586 100644
+--- a/lib/ui/today/step_goal_screen.dart
++++ b/lib/ui/today/step_goal_screen.dart
+@@ -55,7 +55,7 @@ class _StepGoalScreenState extends State<StepGoalScreen> {
+       if (!mounted) return;
+       setState(() => _saving = false);
+       ScaffoldMessenger.of(context).showSnackBar(
+-        SnackBar(content: Text("Couldn't save goal: ${e.body}")),
++        SnackBar(content: Text('Ziel konnte nicht gespeichert werden: ${e.body}')),
+       );
+     }
+   }
+@@ -68,13 +68,13 @@ class _StepGoalScreenState extends State<StepGoalScreen> {
+     final remaining = (_goal - steps).clamp(0, _goal);
+ 
+     return AppScaffold(
+-      title: 'Step goal',
++      title: 'Schrittziel',
+       actions: [
+         const InfoDot(
+-          title: 'Step goal',
++          title: 'Schrittziel',
+           body:
+-              'Steps are estimated on-device from your band\'s motion. The goal '
+-              'is just a target — change it any time.',
++              'Schritte werden direkt auf dem Gerät aus der Bewegung deines '
++              'Bands geschätzt. Das Ziel ist nur eine Zielmarke — ändere es jederzeit.',
+         ),
+       ],
+       children: [
+@@ -93,7 +93,7 @@ class _StepGoalScreenState extends State<StepGoalScreen> {
+                 children: [
+                   Text('$steps', style: AppText.metric.copyWith(fontSize: 44)),
+                   const SizedBox(height: 2),
+-                  Text('OF $_goal',
++                  Text('VON $_goal',
+                       style: AppText.overline
+                           .copyWith(color: AppColors.inkMuted)),
+                 ],
+@@ -104,8 +104,8 @@ class _StepGoalScreenState extends State<StepGoalScreen> {
+         const SizedBox(height: Sp.x3),
+         Center(
+           child: reached
+-              ? const StatusChip('Goal reached', tone: ChipTone.positive)
+-              : Text('$remaining to go',
++              ? const StatusChip('Ziel erreicht', tone: ChipTone.positive)
++              : Text('Noch $remaining',
+                   style: AppText.label.copyWith(color: AppColors.inkSoft)),
+         ),
+         const SizedBox(height: Sp.x6),
+@@ -115,7 +115,7 @@ class _StepGoalScreenState extends State<StepGoalScreen> {
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.stretch,
+             children: [
+-              const TileHeader('Daily goal'),
++              const TileHeader('Tagesziel'),
+               const SizedBox(height: Sp.x4),
+               // Stepper row.
+               Row(
+@@ -128,7 +128,7 @@ class _StepGoalScreenState extends State<StepGoalScreen> {
+                     children: [
+                       Text('$_goal',
+                           style: AppText.metric.copyWith(fontSize: 36)),
+-                      Text('STEPS / DAY',
++                      Text('SCHRITTE / TAG',
+                           style: AppText.overline
+                               .copyWith(color: AppColors.inkMuted)),
+                     ],
+@@ -170,7 +170,7 @@ class _StepGoalScreenState extends State<StepGoalScreen> {
+                     height: 22,
+                     child: CircularProgressIndicator(
+                         strokeWidth: 2.4, color: Colors.white))
+-                : const Text('Save goal'),
++                : const Text('Ziel speichern'),
+           ),
+         ),
+       ],
+diff --git a/lib/ui/today/today_screen.dart b/lib/ui/today/today_screen.dart
+index cbd251d..686cc5b 100644
+--- a/lib/ui/today/today_screen.dart
++++ b/lib/ui/today/today_screen.dart
+@@ -30,6 +30,8 @@ import '../coach/coach_screen.dart';
+ import '../profile/profile_screen.dart';
+ import '../screens/screens.dart';
+ import 'step_goal_screen.dart';
++import 'band_status_card.dart';
++import '../timer/interval_timer_screen.dart';
+ import '../journey/journey_screen.dart';
+ import '../stress/stress_screen.dart';
+ import '../records/records_screen.dart';
+@@ -209,7 +211,7 @@ class _TodayScreenState extends State<TodayScreen>
+         children: [
+           Flexible(
+             child: Text(
+-              'Edge',
++              'CM Health',
+               style: AppText.h1.copyWith(
+                 fontWeight: FontWeight.w800,
+                 letterSpacing: -0.9,
+@@ -229,6 +231,11 @@ class _TodayScreenState extends State<TodayScreen>
+           OsIcon.edit,
+           onTap: () => _push(() => const JournalScreen()),
+         ),
++        // CM Health: interval timer.
++        RoundIconButton(
++          OsIcon.hiit,
++          onTap: () => _push(() => const IntervalTimerScreen()),
++        ),
+         // Profile / settings.
+         RoundIconButton(
+           OsIcon.profile,
+@@ -261,6 +268,9 @@ class _TodayScreenState extends State<TodayScreen>
+             // OTA update prompt + admin alert banner (self-hiding).
+             const StatusBanner(),
+             const SizedBox(height: Sp.x2),
++            // CM Health: band battery + live heart rate, always at the top.
++            const BandStatusCard(),
++            const SizedBox(height: Sp.x2),
+             if (phase == LoadPhase.loading)
+               ..._skeleton()
+             else if (phase == LoadPhase.empty)
+@@ -268,9 +278,9 @@ class _TodayScreenState extends State<TodayScreen>
+             else if (phase == LoadPhase.error)
+               StateCard(
+                 icon: OsIcon.sync,
+-                title: "Couldn't load today",
+-                message: errorText ?? 'Pull down to retry.',
+-                actionLabel: 'Retry',
++                title: 'Heute konnte nicht geladen werden',
++                message: errorText ?? 'Zieh nach unten, um es erneut zu versuchen.',
++                actionLabel: 'Erneut versuchen',
+                 onAction: () => refresh(),
+               )
+             else
+@@ -430,11 +440,11 @@ class _TodayScreenState extends State<TodayScreen>
+         } else {
+           showInfoSheet(
+             context,
+-            title: 'Readiness',
++            title: 'Tagesform',
+             body:
+-                'One 0–100 score blending overnight HRV, resting heart rate, '
+-                'sleep and recent strain against your own baselines.',
+-            methodNote: 'Composite z-score vs your rolling baselines',
++                'Ein Score von 0–100, der nächtliche HRV, Ruhepuls, '
++                'Schlaf und aktuelle Belastung mit deinen eigenen Baselines verrechnet.',
++            methodNote: 'Zusammengesetzter Z-Score vs. deine rollierenden Baselines',
+           );
+         }
+       case 'sleep':
+@@ -459,19 +469,19 @@ class _TodayScreenState extends State<TodayScreen>
+   /// Illness / overtraining early-warning — one chip + the note behind (i).
+   Widget _alertChipRow(Map<String, dynamic> a) {
+     final kind = (a['kind'] ?? '').toString();
+-    final note = (a['note'] ?? 'Your body is showing strain signals.').toString();
++    final note = (a['note'] ?? 'Dein Körper zeigt Belastungssignale.').toString();
+     final title = kind == 'overtraining'
+-        ? 'High training load'
++        ? 'Hohe Trainingslast'
+         : kind == 'both'
+-        ? 'Strain + high load'
+-        : 'Recovery signal';
++        ? 'Belastung + hohe Last'
++        : 'Erholungssignal';
+     return Row(
+       children: [
+         StatusChip(title, icon: OsIcon.activity, tone: ChipTone.warn),
+         InfoDot(
+           title: title,
+           body: note,
+-          methodNote: 'A signal from your own baselines — not a diagnosis',
++          methodNote: 'Ein Signal aus deinen eigenen Baselines — keine Diagnose',
+         ),
+         const Spacer(),
+       ],
+@@ -487,13 +497,13 @@ class _TodayScreenState extends State<TodayScreen>
+       child: ListRow(
+         icon: OsIcon.today,
+         iconColor: AppColors.accent,
+-        title: "Today's plan",
++        title: 'Dein Plan für heute',
+         subtitle: top?.title ??
+-            (coach.summary.isEmpty ? "You're all set today." : coach.summary),
++            (coach.summary.isEmpty ? 'Für heute ist alles bereit.' : coach.summary),
+         trailing: tgt == null
+             ? null
+             : StatusChip(
+-                'strain ~${tgt.value.toStringAsFixed(0)}',
++                'Belastung ~${tgt.value.toStringAsFixed(0)}',
+                 tone: ChipTone.accent,
+               ),
+         onTap: () => _push(() => CoachScreen(coach: coach)),
+@@ -523,15 +533,15 @@ class _TodayScreenState extends State<TodayScreen>
+             children: [
+               const OsAppIcon(OsIcon.heartRate, size: 34),
+               const SizedBox(width: Sp.x2),
+-              Expanded(child: Text('LOOKBACK', style: AppText.overline)),
++              Expanded(child: Text('TAGESRÜCKBLICK', style: AppText.overline)),
+               AppIcon(OsIcon.arrowRight, size: 15, color: AppColors.onSurfaceFaint),
+             ],
+           ),
+           const SizedBox(height: Sp.x3),
+           Text(
+             hasData
+-                ? 'Heart rate, HRV, temp — your whole day'
+-                : 'No data yet today',
++                ? 'Herzfrequenz, HRV, Temperatur — dein ganzer Tag'
++                : 'Heute noch keine Daten',
+             style: AppText.body,
+           ),
+           if (hasData) ...[
+@@ -573,13 +583,13 @@ class _TodayScreenState extends State<TodayScreen>
+               ),
+             ),
+             const SizedBox(height: Sp.x4),
+-            Text('Processing your data',
++            Text('Deine Daten werden verarbeitet',
+                 style: AppText.h2, textAlign: TextAlign.center),
+             const SizedBox(height: Sp.x2),
+             Text(
+               app.reanalyzeProgress.isEmpty
+-                  ? 'Analyzing your stored data…'
+-                  : '${app.reanalyzeProgress.replaceFirst('Analyzing', 'Processing')} days',
++                  ? 'Deine gespeicherten Daten werden analysiert…'
++                  : '${app.reanalyzeProgress.replaceFirst('Analysiere', 'Verarbeite')} Tage',
+               style: AppText.bodySoft,
+               textAlign: TextAlign.center,
+             ),
+@@ -594,18 +604,18 @@ class _TodayScreenState extends State<TodayScreen>
+           final first = snap.data?.$1;
+           final last = snap.data?.$2;
+           final message = first == null
+-              ? 'Stored $raw raw record${raw == 1 ? '' : 's'} from your strap. '
+-                  'Analysis runs automatically after a sync — or run it now.'
+-              : 'Data from ${_fmtCollectionDate(first)} is being collected. '
+-                  'Analysis runs automatically after a sync — or run it now.';
++              ? '$raw ${raw == 1 ? 'Rohdatensatz' : 'Rohdatensätze'} von deinem Band gespeichert. '
++                  'Die Analyse läuft nach einer Synchronisierung automatisch — oder starte sie jetzt.'
++              : 'Daten seit ${_fmtCollectionDate(first)} werden gesammelt. '
++                  'Die Analyse läuft nach einer Synchronisierung automatisch — oder starte sie jetzt.';
+           return StateCard(
+             icon: OsIcon.history,
+-            title: 'Data collection has started',
++            title: 'Die Datensammlung hat begonnen',
+             message: message,
+             trailing: (first != null && last != null)
+                 ? _CollectionProgressBar(firstTs: first, lastTs: last)
+                 : null,
+-            actionLabel: 'Analyze now',
++            actionLabel: 'Jetzt analysieren',
+             onAction: () => app.reanalyzeAll(),
+           );
+         },
+@@ -613,19 +623,19 @@ class _TodayScreenState extends State<TodayScreen>
+     }
+     return const StateCard(
+       icon: OsIcon.wear,
+-      title: 'Wear + sync to see today',
++      title: 'Tragen + synchronisieren, um Heute zu sehen',
+       message:
+-          'Put your strap on and keep the app open. Your daily metrics '
+-          'appear after the next sync and analytics run. If your strap has '
+-          'been recording for a while, the first sync can take a few '
+-          "minutes — it's just pulling everything it's been holding onto. "
+-          'After that, syncs are quick.',
++          'Leg dein Band an und lass die App geöffnet. Deine Tageswerte '
++          'erscheinen nach der nächsten Synchronisierung und dem Analyse-Lauf. '
++          'Wenn dein Band schon eine Weile aufzeichnet, kann die erste '
++          'Synchronisierung ein paar Minuten dauern — es wird nur alles '
++          'abgeholt, was sich angesammelt hat. Danach geht es schnell.',
+     );
+   }
+ 
+   static const _collectionMonths = [
+-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++    'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
++    'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez',
+   ];
+ 
+   String _fmtCollectionDate(int epochSec) {
+@@ -659,30 +669,30 @@ class _TodayScreenState extends State<TodayScreen>
+     if (stale &&
+         (captureActive || deriveRunning || pendingLight || pendingHeavy)) {
+       label =
+-          'Your latest band data is more than an hour behind. OpenStrap is catching up now and this page will refresh automatically when sleep and today\'s metrics are ready.';
++          'Deine letzten Band-Daten sind mehr als eine Stunde alt. CM Health holt gerade auf, und diese Seite aktualisiert sich automatisch, sobald Schlaf und die heutigen Werte bereit sind.';
+     } else if (stale && app.isConnected) {
+       label =
+-          'Your latest band data is more than an hour behind. OpenStrap is connected and waiting for the next data handoff.';
++          'Deine letzten Band-Daten sind mehr als eine Stunde alt. CM Health ist verbunden und wartet auf die nächste Datenübergabe.';
+     } else if (stale) {
+       label =
+-          'Your latest band data is more than an hour behind. Reconnect the band and this page will refresh automatically once new data is captured and computed.';
++          'Deine letzten Band-Daten sind mehr als eine Stunde alt. Verbinde das Band neu, und diese Seite aktualisiert sich automatisch, sobald neue Daten erfasst und berechnet sind.';
+     } else if (status?.overnightBuilding == true &&
+         status?.activityBuilding == true) {
+       label =
+-          'Today\'s activity is landing and the overnight metrics are still settling.';
++          'Die heutige Aktivität trifft gerade ein, und die Nachtwerte werden noch berechnet.';
+     } else if (status?.overnightBuilding == true) {
+       label =
+-          'Today\'s overnight metrics are still computing. Sleep and readiness will fill when that pass finishes.';
++          'Die heutigen Nachtwerte werden noch berechnet. Schlaf und Tagesform erscheinen, sobald dieser Durchlauf fertig ist.';
+     } else if (status?.activityBuilding == true) {
+       label =
+-          'Fresh data is in for today, but the day metrics are still catching up.';
++          'Frische Daten für heute sind da, aber die Tageswerte holen noch auf.';
+     } else {
+       label =
+-          'Showing the last settled overnight while today\'s overnight metrics have not landed yet.';
++          'Es wird die letzte abgeschlossene Nacht gezeigt, solange die heutigen Nachtwerte noch nicht eingetroffen sind.';
+     }
+     final overnight = status?.overnightDay;
+     final extra = status?.showingPriorOvernight == true && overnight != null
+-        ? ' Last settled night: $overnight.'
++        ? ' Letzte abgeschlossene Nacht: $overnight.'
+         : '';
+     return ProCard(
+       padding: const EdgeInsets.all(Sp.x4),
+@@ -850,14 +860,14 @@ class TodayVitals extends StatelessWidget {
+             children: [
+               ListRow(
+                 icon: OsIcon.wear,
+-                title: 'Wear time',
++                title: 'Tragezeit',
+                 value: _hm(t.wearTime) ?? '—',
+                 divider: true,
+                 onTap: () => onOpen('wear'),
+               ),
+               ListRow(
+                 icon: OsIcon.records,
+-                title: 'Records & streaks',
++                title: 'Rekorde & Serien',
+                 onTap: () => onOpen('records'),
+               ),
+             ],
+@@ -874,16 +884,16 @@ class TodayVitals extends StatelessWidget {
+     final building = status.overnightBuilding || status.activityBuilding;
+     if (!building && !status.showingPriorOvernight) return null;
+     final label = status.overnightBuilding
+-        ? 'Overnight settling'
++        ? 'Nachtwerte werden berechnet'
+         : status.activityBuilding
+-        ? 'Day metrics catching up'
+-        : 'Showing last settled night';
++        ? 'Tageswerte holen auf'
++        : 'Zeigt die letzte abgeschlossene Nacht';
+     final body = status.overnightBuilding
+-        ? 'Sleep and readiness update after the overnight settle finishes.'
++        ? 'Schlaf und Tagesform aktualisieren sich, sobald die Nachtberechnung fertig ist.'
+         : status.activityBuilding
+-        ? 'Fresh data is in for today; strain and steps are still building.'
+-        : 'Today\'s overnight has not landed yet, so the last settled night '
+-              'is shown${status.overnightDay != null ? ' (${status.overnightDay})' : ''}.';
++        ? 'Frische Daten für heute sind da; Belastung und Schritte werden noch berechnet.'
++        : 'Die heutige Nacht ist noch nicht eingetroffen, daher wird die letzte '
++              'abgeschlossene Nacht gezeigt${status.overnightDay != null ? ' (${status.overnightDay})' : ''}.';
+     return Row(
+       children: [
+         StatusChip(label, icon: OsIcon.activity,
+@@ -915,7 +925,7 @@ class TodayVitals extends StatelessWidget {
+             const SizedBox(width: Sp.x2),
+             Expanded(
+               child: Text(
+-                'Your AI insight will appear here.',
++                'Dein KI-Einblick erscheint hier.',
+                 style: AppText.bodySoft.copyWith(
+                   color: AppColors.onSurfaceFaint,
+                 ),
+@@ -930,8 +940,8 @@ class TodayVitals extends StatelessWidget {
+     final bullets = _briefingBullets(b.breakdownMd);
+     return Disclosure(
+       summary: b.oneLiner,
+-      expandLabel: "What's driving this",
+-      collapseLabel: 'Hide',
++      expandLabel: 'Was dahintersteckt',
++      collapseLabel: 'Ausblenden',
+       child: Column(
+         crossAxisAlignment: CrossAxisAlignment.start,
+         mainAxisSize: MainAxisSize.min,
+@@ -964,7 +974,7 @@ class TodayVitals extends StatelessWidget {
+               child: Pressable(
+                 onTap: onOpenAiBreakdown,
+                 child: Text(
+-                  'Full breakdown & regenerate',
++                  'Vollständige Analyse & neu generieren',
+                   style: AppText.captionMuted.copyWith(
+                     color: AppColors.accent,
+                     fontWeight: FontWeight.w700,
+@@ -999,9 +1009,9 @@ class TodayVitals extends StatelessWidget {
+     final (word, wordIcon) = score == null
+         ? (null, null)
+         : switch (readinessBand(score)) {
+-            'good' => ('Push', OsIcon.intensity),
+-            'moderate' => ('Focus', OsIcon.activity),
+-            _ => ('Recover', OsIcon.calm),
++            'good' => ('Angreifen', OsIcon.intensity),
++            'moderate' => ('Fokus', OsIcon.activity),
++            _ => ('Erholen', OsIcon.calm),
+           };
+ 
+     // Honest "still learning you" center: nights-to-go over a dashed
+@@ -1014,12 +1024,12 @@ class TodayVitals extends StatelessWidget {
+         children: [
+           Text('$left', style: AppText.display.copyWith(fontSize: 40)),
+           Text(
+-            left == 1 ? 'NIGHT' : 'NIGHTS',
++            left == 1 ? 'NACHT' : 'NÄCHTE',
+             style: AppText.overline.copyWith(fontSize: 9),
+           ),
+           const SizedBox(height: 2),
+           Text(
+-            'Learning you',
++            'Lernt dich kennen',
+             style: AppText.caption.copyWith(
+               color: AppColors.accent,
+               fontWeight: FontWeight.w800,
+@@ -1031,7 +1041,7 @@ class TodayVitals extends StatelessWidget {
+ 
+     return OrbitScore(
+       score: score,
+-      label: 'Readiness',
++      label: 'Tagesform',
+       word: word,
+       wordIcon: wordIcon,
+       color: accent,
+@@ -1074,10 +1084,10 @@ class TodayVitals extends StatelessWidget {
+         context,
+         title: 'HRV (RMSSD)',
+         body:
+-            'Beat-to-beat variability from last night\'s RR intervals. Higher '
+-            'than your own baseline generally means better recovery.',
++            'Schlag-zu-Schlag-Variabilität aus den RR-Intervallen der letzten Nacht. '
++            'Höher als deine eigene Baseline bedeutet in der Regel bessere Erholung.',
+         methodNote:
+-            'Lipponen–Tarvainen-corrected RR · nightly RMSSD · PRV at 1 Hz beat timing',
++            'Lipponen–Tarvainen-korrigierte RR · nächtliche RMSSD · PRV bei 1 Hz Beat-Timing',
+       ),
+       child: Column(
+         crossAxisAlignment: CrossAxisAlignment.start,
+@@ -1126,14 +1136,14 @@ class TodayVitals extends StatelessWidget {
+         crossAxisAlignment: CrossAxisAlignment.start,
+         mainAxisSize: MainAxisSize.min,
+         children: [
+-          const TileHeader('Resting HR'),
++          const TileHeader('Ruhepuls'),
+           const SizedBox(height: Sp.x2),
+           BigStat(
+             value: _int(t.restingHr),
+             unit: 'bpm',
+             caption: delta.isEmpty
+                 ? null
+-                : '${delta.value! > 0 ? '+' : ''}${delta.value!.round()} vs normal',
++                : '${delta.value! > 0 ? '+' : ''}${delta.value!.round()} vs. normal',
+             captionAccent: true,
+           ),
+           if (_spark('resting_hr') != null) ...[
+@@ -1179,11 +1189,11 @@ class TodayVitals extends StatelessWidget {
+           // Same tag, same colour as the steps detail screen — `Tag`'s default
+           // is the warning amber, which reads as a caution rather than a
+           // statement of confidence.
+-          TileHeader('Steps', trailing: Tag('measured', color: DomainAccent.steps)),
++          TileHeader('Schritte', trailing: Tag('gemessen', color: DomainAccent.steps)),
+           const SizedBox(height: Sp.x2),
+           BigStat(
+             value: steps > 0 ? '$steps' : null,
+-            caption: steps > 0 ? 'goal $goal' : null,
++            caption: steps > 0 ? 'Ziel $goal' : null,
+           ),
+           if (steps > 0) ...[
+             const SizedBox(height: Sp.x3),
+@@ -1208,12 +1218,12 @@ class TodayVitals extends StatelessWidget {
+         crossAxisAlignment: CrossAxisAlignment.start,
+         mainAxisSize: MainAxisSize.min,
+         children: [
+-          const TileHeader('Calories', icon: OsIcon.calories),
++          const TileHeader('Kalorien', icon: OsIcon.calories),
+           const SizedBox(height: Sp.x2),
+           BigStat(
+             value: _int(t.calories),
+             unit: 'kcal',
+-            caption: t.calories.isEmpty ? null : 'active burn · est',
++            caption: t.calories.isEmpty ? null : 'aktiver Verbrauch · geschätzt',
+           ),
+         ],
+       ),
+@@ -1239,7 +1249,7 @@ class TodayVitals extends StatelessWidget {
+         crossAxisAlignment: CrossAxisAlignment.start,
+         mainAxisSize: MainAxisSize.min,
+         children: [
+-          const TileHeader('Steps goal (week)'),
++          const TileHeader('Schrittziel (Woche)'),
+           const SizedBox(height: Sp.x3),
+           RingWeek(
+             values: ring.values,
+@@ -1292,7 +1302,7 @@ class _QuickStatsRow extends StatelessWidget {
+     final items = [
+       (
+         icon: OsIcon.sleep,
+-        label: 'Sleep',
++        label: 'Schlaf',
+         value: t.sleepDuration.isEmpty
+             ? null
+             : '${t.sleepDuration.value!.toInt() ~/ 60}h '
+@@ -1302,14 +1312,14 @@ class _QuickStatsRow extends StatelessWidget {
+       ),
+       (
+         icon: OsIcon.heart,
+-        label: 'Heart',
++        label: 'Herz',
+         value: t.restingHr.isEmpty ? null : '${t.restingHr.value!.round()}',
+         color: DomainAccent.heart,
+         route: 'heart',
+       ),
+       (
+         icon: OsIcon.bodyStrain,
+-        label: 'Strain',
++        label: 'Belastung',
+         value: t.strain.isEmpty ? null : t.strain.value!.toStringAsFixed(1),
+         color: DomainAccent.strain,
+         route: 'body',
+@@ -1467,7 +1477,7 @@ class _RecoveryStoryState extends State<_RecoveryStory>
+     final panels = <Widget Function()>[];
+     // 1. Recovered.
+     panels.add(() => _panel(
+-          overline: 'RECOVERED',
++          overline: 'ERHOLT',
+           gauge: ArcGauge(
+             value: (widget.recoveredPct / 100).clamp(0.0, 1.0),
+             color: AppColors.glow1,
+@@ -1478,17 +1488,17 @@ class _RecoveryStoryState extends State<_RecoveryStory>
+                 style: AppText.display.copyWith(color: Colors.white)),
+           ),
+           line: widget.recoveredPct >= 66
+-              ? 'You’re primed — a strong day to push.'
++              ? 'Du bist bereit — ein starker Tag zum Angreifen.'
+               : widget.recoveredPct >= 40
+-                  ? 'Moderately recovered — train to feel.'
+-                  : 'Run low today — favour easy movement.',
++                  ? 'Mittel erholt — trainiere nach Gefühl.'
++                  : 'Heute lieber ruhig — setz auf lockere Bewegung.',
+         ));
+     // 2. Sleep.
+     if (widget.sleptMin != null && widget.needMin != null) {
+       final slept = widget.sleptMin!, need = widget.needMin!;
+       String hm(int m) => '${m ~/ 60}h ${(m % 60).toString().padLeft(2, '0')}m';
+       panels.add(() => _panel(
+-            overline: 'SLEEP',
++            overline: 'SCHLAF',
+             gauge: ArcGauge(
+               value: need == 0 ? 0 : (slept / need).clamp(0.0, 1.0),
+               color: AppColors.loadDetraining,
+@@ -1497,7 +1507,7 @@ class _RecoveryStoryState extends State<_RecoveryStory>
+               center: Text(hm(slept),
+                   style: AppText.metricSm.copyWith(color: Colors.white)),
+             ),
+-            line: 'of your ${hm(need)} need',
++            line: 'von deinem Schlafbedarf von ${hm(need)}',
+           ));
+     }
+     // 3. HRV.
+@@ -1517,14 +1527,14 @@ class _RecoveryStoryState extends State<_RecoveryStory>
+                 ? null
+                 : BaselineDeltaChip(widget.hrvDelta, unit: 'ms'),
+             line: widget.hrvDelta == null
+-                ? 'Beat-to-beat variability last night'
+-                : 'vs your normal',
++                ? 'Schlag-zu-Schlag-Variabilität letzte Nacht'
++                : 'vs. dein Normalwert',
+           ));
+     }
+     // 4. Today's plan.
+     if (widget.planTitle != null) {
+       panels.add(() => _panel(
+-            overline: 'TODAY’S PLAN',
++            overline: 'DEIN PLAN FÜR HEUTE',
+             gauge: const AppIcon(OsIcon.ai, size: 56, color: Colors.white),
+             line: widget.planTitle!,
+             sub: widget.planBody,
+@@ -1690,7 +1700,7 @@ class _CollectionProgressBar extends StatelessWidget {
+         ),
+         const SizedBox(height: Sp.x2),
+         Text(
+-          'Caught up to ${(frac * 100).round()}% of now',
++          'Zu ${(frac * 100).round()}% aufgeholt',
+           style: AppText.caption,
+           textAlign: TextAlign.center,
+         ),

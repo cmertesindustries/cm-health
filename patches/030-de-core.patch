@@ -1,0 +1,1790 @@
+diff --git a/lib/ai/briefing.dart b/lib/ai/briefing.dart
+index be194ec..c934f7d 100644
+--- a/lib/ai/briefing.dart
++++ b/lib/ai/briefing.dart
+@@ -22,7 +22,7 @@ enum BriefingPeriod { morning, evening }
+ extension BriefingPeriodLabel on BriefingPeriod {
+   String get id => this == BriefingPeriod.morning ? 'morning' : 'evening';
+   String get title =>
+-      this == BriefingPeriod.morning ? 'Morning briefing' : 'Evening recap';
++      this == BriefingPeriod.morning ? 'Morgen-Briefing' : 'Abend-Rückblick';
+ }
+ 
+ /// Which period the Today card should surface right now. Mornings through the
+diff --git a/lib/ai/briefing_engine.dart b/lib/ai/briefing_engine.dart
+index 3c5a63c..1b57382 100644
+--- a/lib/ai/briefing_engine.dart
++++ b/lib/ai/briefing_engine.dart
+@@ -173,6 +173,8 @@ String briefingSystemPrompt(BriefingPeriod period) {
+   return 'You write a health briefing for a local-first fitness band app. '
+       'Summarize $scope.\n'
+       'HARD RULES:\n'
++      '- Write in GERMAN (informal "du") — the one-liner and every bullet. '
++      'Keep units as-is (bpm, ms, kcal, min, %).\n'
+       '- Do NOT open with a greeting or any reference to the time of day — '
+       'the app shows its own greeting separately, computed at the moment the '
+       'reader actually opens it, and this text may be read hours after it was '
+@@ -278,7 +280,7 @@ class BriefingEngine {
+   /// return it. Throws [CoachException] on provider errors / missing key.
+   Future<Briefing> generate(BriefingPeriod period, {DateTime? now}) async {
+     if (!configured) {
+-      throw CoachException('Add your AI key to enable briefings.');
++      throw CoachException('Füge deinen KI-Schlüssel hinzu, um Briefings zu aktivieren.');
+     }
+     // One effective timestamp for the whole generation, so the day snapshot,
+     // greeting and generatedAt can't straddle midnight / a greeting boundary.
+@@ -294,7 +296,7 @@ class BriefingEngine {
+       user: buildBriefingUserPrompt(period, day, inputs, tod),
+     );
+     if (raw.trim().isEmpty) {
+-      throw CoachException('Empty response from provider.');
++      throw CoachException('Leere Antwort vom Provider.');
+     }
+     final parsed = parseBriefingResponse(raw);
+     final b = Briefing(
+diff --git a/lib/ai/journal_ai.dart b/lib/ai/journal_ai.dart
+index ba3bd6f..3d5fb5b 100644
+--- a/lib/ai/journal_ai.dart
++++ b/lib/ai/journal_ai.dart
+@@ -95,7 +95,9 @@ String journalAiSystemPrompt() =>
+     'preferring this vocabulary: ${kJournalPresetTags.join(', ')}. Add a '
+     'short lowercase custom tag only when nothing fits.\n'
+     '- note: a CUMULATIVE 1-3 sentence summary of the day so far, factual, '
+-    'in their voice. Only include things they actually said.';
++    'in their voice. Only include things they actually said.\n'
++    '- Write "reply" and "note" in GERMAN (informal "du"). Tags keep using '
++    'the vocabulary above.';
+ 
+ /// Multi-turn chat wrapper over the shared BYOK plumbing. Holds the transcript
+ /// so each turn re-sends the conversation (the tags/note are cumulative).
+@@ -115,7 +117,7 @@ class JournalAiEngine {
+   /// provider errors / missing key.
+   Future<JournalAiTurn> send(String userText) async {
+     if (!configured) {
+-      throw CoachException('Add your AI key to use the journal chat.');
++      throw CoachException('Füge deinen KI-Schlüssel hinzu, um den Journal-Chat zu nutzen.');
+     }
+     _history.add({'role': 'user', 'content': userText});
+     final messages = <Map<String, dynamic>>[
+diff --git a/lib/ai/reminder_plan.dart b/lib/ai/reminder_plan.dart
+index ac8285e..5d18d35 100644
+--- a/lib/ai/reminder_plan.dart
++++ b/lib/ai/reminder_plan.dart
+@@ -50,9 +50,9 @@ List<AiReminderSlot> aiReminderPlan(
+     final m = prefs.morningMin % 1440;
+     out.add(AiReminderSlot(
+       id: NotificationService.idMorningBrief,
+-      title: 'Your morning briefing is ready',
+-      body: 'Tap for last night\'s sleep, recovery and what it means for '
+-          'today.',
++      title: 'Dein Morgen-Briefing ist bereit',
++      body: 'Tippe für Schlaf und Erholung der letzten Nacht — und was das '
++          'für heute bedeutet.',
+       route: kRouteAiMorning,
+       hour: m ~/ 60,
+       minute: m % 60,
+@@ -62,8 +62,8 @@ List<AiReminderSlot> aiReminderPlan(
+     final m = prefs.eveningMin % 1440;
+     out.add(AiReminderSlot(
+       id: NotificationService.idEveningBrief,
+-      title: 'Your evening recap is ready',
+-      body: 'Tap for today\'s strain, movement and how the day landed.',
++      title: 'Dein Abend-Rückblick ist bereit',
++      body: 'Tippe für die heutige Belastung, Bewegung und wie der Tag gelaufen ist.',
+       route: kRouteAiEvening,
+       hour: m ~/ 60,
+       minute: m % 60,
+@@ -73,9 +73,9 @@ List<AiReminderSlot> aiReminderPlan(
+     final m = prefs.resolvedJournalMin(bedtimeMinOfDay: bedtimeMinOfDay);
+     out.add(AiReminderSlot(
+       id: NotificationService.idJournalLog,
+-      title: 'About your bedtime — log your day',
+-      body: 'A minute of notes tonight teaches OpenStrap what actually moves '
+-          'your recovery.',
++      title: 'Bald Schlafenszeit — halte deinen Tag fest',
++      body: 'Eine Minute Notizen heute Abend zeigt CM Health, was deine '
++          'Erholung wirklich beeinflusst.',
+       route: kRouteJournalCompose,
+       hour: m ~/ 60,
+       minute: m % 60,
+diff --git a/lib/app.dart b/lib/app.dart
+index 9811034..669c092 100644
+--- a/lib/app.dart
++++ b/lib/app.dart
+@@ -1,3 +1,4 @@
++import 'package:flutter_localizations/flutter_localizations.dart';
+ import 'dart:async';
+ 
+ import 'package:flutter/material.dart';
+@@ -105,8 +106,13 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
+   Widget build(BuildContext context) {
+     final theme = context.watch<ThemeController>();
+     return MaterialApp(
+-      title: 'OpenStrap',
++      title: 'CM Health',
+       debugShowCheckedModeBanner: false,
++      // CM Health: German UI — fixed locale so Material widgets (pickers,
++      // tooltips, semantics) match the hardcoded German strings.
++      locale: const Locale('de'),
++      supportedLocales: const [Locale('de'), Locale('en')],
++      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+       theme: theme.lightTheme,
+       darkTheme: theme.darkTheme,
+       themeMode: theme.materialThemeMode,
+@@ -241,10 +247,10 @@ class _ShellState extends State<_Shell> {
+ 
+   // Tab icons (see lib/ui/kit/os_icons.dart for the pack each one resolves to).
+   static const _nav = [
+-    NavPillItem(OsIcon.today, 'Today'),
+-    NavPillItem(OsIcon.sleep, 'Sleep'),
+-    NavPillItem(OsIcon.heart, 'Heart'),
+-    NavPillItem(OsIcon.bodyStrain, 'Body'),
++    NavPillItem(OsIcon.today, 'Heute'),
++    NavPillItem(OsIcon.sleep, 'Schlaf'),
++    NavPillItem(OsIcon.heart, 'Herz'),
++    NavPillItem(OsIcon.bodyStrain, 'Körper'),
+     NavPillItem(OsIcon.workouts, 'Workouts'),
+   ];
+ 
+diff --git a/lib/ble/accessory_setup.dart b/lib/ble/accessory_setup.dart
+index d831186..db4a705 100644
+--- a/lib/ble/accessory_setup.dart
++++ b/lib/ble/accessory_setup.dart
+@@ -47,7 +47,7 @@ class AccessorySetup {
+   static Future<String> showPicker() async {
+     final id = await _ch.invokeMethod<String>('showPicker');
+     if (id == null || id.isEmpty) {
+-      throw Exception('Pairing cancelled.');
++      throw Exception('Kopplung abgebrochen.');
+     }
+     return id;
+   }
+diff --git a/lib/ble/proximity_policy.dart b/lib/ble/proximity_policy.dart
+index 9305188..5cdfae1 100644
+--- a/lib/ble/proximity_policy.dart
++++ b/lib/ble/proximity_policy.dart
+@@ -234,29 +234,29 @@ class ProximityTracker {
+ /// step. Deliberately about signal, never about metres.
+ extension ProximityZoneLabel on ProximityZone {
+   String get label => switch (this) {
+-        ProximityZone.immediate => 'Right here',
+-        ProximityZone.near => 'Close by',
+-        ProximityZone.far => 'Somewhere around',
+-        ProximityZone.veryFar => 'Faint signal',
+-        ProximityZone.unknown => 'Listening…',
++        ProximityZone.immediate => 'Direkt hier',
++        ProximityZone.near => 'Ganz in der Nähe',
++        ProximityZone.far => 'Irgendwo hier',
++        ProximityZone.veryFar => 'Schwaches Signal',
++        ProximityZone.unknown => 'Lausche…',
+       };
+ 
+   String get hint => switch (this) {
+         ProximityZone.immediate =>
+-          'Within arm\'s reach — check the bedding, pockets and under cushions.',
+-        ProximityZone.near => 'You\'re in the right area. Sweep slowly.',
+-        ProximityZone.far => 'Try another part of the room, or the next one.',
++          'In Armreichweite — sieh im Bettzeug, in Taschen und unter Kissen nach.',
++        ProximityZone.near => 'Du bist in der richtigen Gegend. Such langsam ab.',
++        ProximityZone.far => 'Versuch es in einem anderen Teil des Raums — oder im nächsten.',
+         ProximityZone.veryFar =>
+-          'Barely in range. Walk around and watch for the signal to climb.',
+-        ProximityZone.unknown => 'Getting a fix on the signal…',
++          'Kaum in Reichweite. Lauf herum und achte darauf, ob das Signal stärker wird.',
++        ProximityZone.unknown => 'Das Signal wird eingemessen…',
+       };
+ }
+ 
+ extension ProximityTrendLabel on ProximityTrend {
+   String get label => switch (this) {
+-        ProximityTrend.warmer => 'Warmer',
+-        ProximityTrend.colder => 'Colder',
+-        ProximityTrend.steady => 'Steady',
++        ProximityTrend.warmer => 'Wärmer',
++        ProximityTrend.colder => 'Kälter',
++        ProximityTrend.steady => 'Stabil',
+         ProximityTrend.unknown => '',
+       };
+ }
+diff --git a/lib/coach/coach_engine.dart b/lib/coach/coach_engine.dart
+index 40a2d52..c731dba 100644
+--- a/lib/coach/coach_engine.dart
++++ b/lib/coach/coach_engine.dart
+@@ -188,15 +188,15 @@ class CoachEngine {
+ 
+   final Random _rand = Random();
+   static const List<String> _shenanigans = [
+-    'Reading your overnight RR…',
+-    'Doing the Banister math…',
+-    'Asking your heart rate a few questions…',
+-    'Decoding last night…',
+-    'Auditing 90 days of you…',
+-    'Letting the data confess…',
+-    'Lining up the z-scores…',
+-    'Chasing a hunch through your HRV…',
+-    'Pulling the thread…',
++    'Lese deine nächtlichen RR-Intervalle…',
++    'Rechne die Banister-Formel durch…',
++    'Stelle deiner Herzfrequenz ein paar Fragen…',
++    'Entschlüssle die letzte Nacht…',
++    'Prüfe 90 Tage von dir…',
++    'Lasse die Daten auspacken…',
++    'Sortiere die z-Scores…',
++    'Verfolge eine Spur durch deine HRV…',
++    'Ziehe am Faden…',
+   ];
+ 
+   CoachEngine({required this.config, required this.api, this.storageKey = 'anon'});
+@@ -376,7 +376,7 @@ class CoachEngine {
+         return t.length > 40 ? '${t.substring(0, 40)}…' : t;
+       }
+     }
+-    return 'New chat';
++    return 'Neuer Chat';
+   }
+ 
+   String _preview() {
+@@ -419,7 +419,7 @@ class CoachEngine {
+             : {'Authorization': 'Bearer $apiKey'},
+       ).timeout(const Duration(seconds: 20));
+       if (resp.statusCode != 200) {
+-        throw CoachException('Models request failed (${resp.statusCode}): ${_short(resp.body)}');
++        throw CoachException('Modell-Abfrage fehlgeschlagen (${resp.statusCode}): ${_short(resp.body)}');
+       }
+       final j = jsonDecode(resp.body);
+       final data = (j['data'] as List?) ?? const [];
+@@ -502,7 +502,7 @@ class CoachEngine {
+         });
+       }
+     }
+-    emit(CoachItem.assistant('I dug through several steps but couldn’t wrap that up — try narrowing the question.'));
++    emit(CoachItem.assistant('Ich habe mehrere Schritte durchsucht, konnte das aber nicht abschließen — versuche, die Frage einzugrenzen.'));
+     onStatus(null);
+   }
+ 
+@@ -609,10 +609,11 @@ class CoachEngine {
+     final payload = jsonEncode(body);
+     if (payload.length > kMaxRequestBytes) {
+       throw CoachException(
+-          'That request grew to ${payload.length ~/ 1024} KB, over the '
+-          '${kMaxRequestBytes ~/ 1024} KB safety limit for data leaving this '
+-          'device. Start a new chat or ask a narrower question (aggregate with '
+-          'AVG/MIN/MAX/COUNT instead of selecting every row).');
++          'Diese Anfrage ist auf ${payload.length ~/ 1024} KB angewachsen und '
++          'liegt über dem Sicherheitslimit von ${kMaxRequestBytes ~/ 1024} KB '
++          'für Daten, die dieses Gerät verlassen. Starte einen neuen Chat oder '
++          'stelle eine engere Frage (aggregiere mit AVG/MIN/MAX/COUNT, statt '
++          'jede Zeile auszuwählen).');
+     }
+     try {
+       final resp = await c
+@@ -627,19 +628,20 @@ class CoachEngine {
+           .timeout(const Duration(seconds: 120));
+       if (resp.statusCode != 200) {
+         throw CoachException(
+-            'Provider error (${resp.statusCode}): ${_briefErr(resp.body)}');
++            'Provider-Fehler (${resp.statusCode}): ${_briefErr(resp.body)}');
+       }
+       final Object? j;
+       try {
+         j = jsonDecode(utf8.decode(resp.bodyBytes));
+       } catch (_) {
+         throw CoachException(
+-            'Provider returned a non-JSON response. Check the API base URL — '
+-            'it must point at an OpenAI-compatible /chat/completions endpoint.');
++            'Der Provider hat eine Antwort ohne JSON geliefert. Prüfe die '
++            'API-Basis-URL — sie muss auf einen OpenAI-kompatiblen '
++            '/chat/completions-Endpunkt zeigen.');
+       }
+-      if (j is! Map) throw CoachException('Unexpected response from provider.');
++      if (j is! Map) throw CoachException('Unerwartete Antwort vom Provider.');
+       final choices = (j['choices'] as List?) ?? const [];
+-      if (choices.isEmpty) throw CoachException('Empty response from provider.');
++      if (choices.isEmpty) throw CoachException('Leere Antwort vom Provider.');
+       // Every shape below is a REAL thing OpenAI-compatible proxies return:
+       // a streaming chunk (`delta` instead of `message`), the legacy
+       // completions shape (`text`), or a bare string. Reaching for
+@@ -648,15 +650,16 @@ class CoachEngine {
+       // dynamic>'") instead of the documented CoachException, so the UI showed
+       // a Dart type name to the user rather than an actionable message.
+       final first = choices.first;
+-      if (first is! Map) throw CoachException('Unexpected response from provider.');
++      if (first is! Map) throw CoachException('Unerwartete Antwort vom Provider.');
+       final msg = first['message'] ?? first['delta'];
+       if (msg is Map) return msg.cast<String, dynamic>();
+       final text = first['text'];
+       if (text is String) return <String, dynamic>{'content': text};
+       throw CoachException(
+-          'Provider returned an unsupported response shape (no message/delta). '
+-          'Streaming-only endpoints are not supported — use a standard '
+-          'OpenAI-compatible /chat/completions endpoint.');
++          'Der Provider hat ein nicht unterstütztes Antwortformat geliefert '
++          '(kein message/delta). Reine Streaming-Endpunkte werden nicht '
++          'unterstützt — nutze einen Standard-OpenAI-kompatiblen '
++          '/chat/completions-Endpunkt.');
+     } finally {
+       if (client == null) c.close();
+     }
+@@ -727,8 +730,8 @@ class CoachEngine {
+         // actions (confirmed)
+         case 'log_journal':
+           return await _action(confirm, ActionRequest(
+-            tool: name, title: 'Log journal',
+-            summary: 'Add journal for ${args['date']}: tags ${args['tags'] ?? []}, note "${args['note'] ?? ''}".',
++            tool: name, title: 'Journal speichern',
++            summary: 'Journal für ${args['date']} hinzufügen: Tags ${args['tags'] ?? []}, Notiz "${args['note'] ?? ''}".',
+             args: args,
+           ), () async {
+             await api.postJournal('${args['date']}',
+@@ -737,23 +740,23 @@ class CoachEngine {
+           });
+         case 'log_period':
+           return await _action(confirm, ActionRequest(
+-            tool: name, title: 'Log period',
+-            summary: 'Log a period start on ${args['date']}.', args: args,
++            tool: name, title: 'Periode eintragen',
++            summary: 'Periodenbeginn am ${args['date']} eintragen.', args: args,
+           ), () async { await api.postCycleLog('${args['date']}', kind: 'start'); return 'Period logged.'; });
+         case 'start_workout':
+           return await _action(confirm, ActionRequest(
+-            tool: name, title: 'Start workout',
+-            summary: 'Start a ${args['type'] ?? 'workout'} session now.', args: args,
++            tool: name, title: 'Workout starten',
++            summary: 'Jetzt eine ${args['type'] ?? 'Workout'}-Session starten.', args: args,
+           ), () async { final r = await api.startWorkout('${args['type'] ?? 'other'}'); return _enc(r); });
+         case 'end_workout':
+           return await _action(confirm, ActionRequest(
+-            tool: name, title: 'End workout',
+-            summary: 'End the active workout.', args: args,
++            tool: name, title: 'Workout beenden',
++            summary: 'Das aktive Workout beenden.', args: args,
+           ), () async { final r = await api.endWorkout('${args['workout_id']}'); return _enc(r); });
+         case 'set_step_goal':
+           return await _action(confirm, ActionRequest(
+-            tool: name, title: 'Set step goal',
+-            summary: 'Set your daily step goal to ${args['goal']}.', args: args,
++            tool: name, title: 'Schrittziel festlegen',
++            summary: 'Dein tägliches Schrittziel auf ${args['goal']} setzen.', args: args,
+           ), () async { await api.setStepGoal((args['goal'] as num).toInt()); return 'Step goal updated.'; });
+ 
+         default:
+@@ -781,10 +784,10 @@ class CoachEngine {
+ 
+   String _statusFor(String name, Map<String, dynamic> args) {
+     switch (name) {
+-      case 'run_sql': return 'Querying your data…';
+-      case 'plot_chart': return 'Plotting…';
+-      case 'render': return 'Rendering ${args['type'] ?? 'figure'}…';
+-      default: return 'Working…';
++      case 'run_sql': return 'Frage deine Daten ab…';
++      case 'plot_chart': return 'Zeichne Diagramm…';
++      case 'render': return 'Rendere ${args['type'] ?? 'Grafik'}…';
++      default: return 'Arbeite…';
+     }
+   }
+ 
+diff --git a/lib/coach/coach_prompt.dart b/lib/coach/coach_prompt.dart
+index 148413d..1039ebd 100644
+--- a/lib/coach/coach_prompt.dart
++++ b/lib/coach/coach_prompt.dart
+@@ -2,25 +2,31 @@
+ // The coach reasons ONLY over data it fetches with tools; it never invents numbers.
+ 
+ const String kCoachSystemPrompt = '''
+-You are the OpenStrap AI Coach — an expert in wearable physiology, training load,
+-sleep science, and HRV, embedded in the user's own OpenStrap app (an open-source
++You are the CM Health AI Coach — an expert in wearable physiology, training load,
++sleep science, and HRV, embedded in the user's own CM Health app (an open-source
+ WHOOP-4.0 alternative). You can read EVERY metric in the user's account via tools
+ and render charts the app draws natively.
+ 
++# LANGUAGE
++ALWAYS answer the user in GERMAN, using the informal "du" — regardless of the
++language they write in. Chart/figure titles, series names and notes must be
++German too. Keep units as-is (bpm, ms, kcal, min, %).
++
+ # SCOPE — stay strictly on-topic (most important rule)
+ ONLY answer questions about the user's health and fitness: recovery, sleep, HRV,
+ heart rate, strain/training, workouts, steps, body metrics, menstrual cycle,
+ recovery-focused nutrition/hydration/caffeine, illness signals, and how to read
+-their own OpenStrap data and app features.
++their own CM Health data and app features.
+ 
+ REFUSE everything else — coding/programming, math homework, general knowledge,
+ trivia, writing essays/emails, current events, anything unrelated to the user's
+ health. Do NOT write code under any circumstances. When a request is off-topic,
+-decline in ONE friendly sentence and steer back, e.g.: "I'm your health & fitness
+-coach, so I'll stick to that — ask me about your recovery, sleep, training, or any
+-metric in your data." Do not partially comply (no code snippets, no exceptions).
++decline in ONE friendly sentence and steer back, e.g.: "Ich bin dein Coach für
++Gesundheit und Fitness, dabei bleibe ich — frag mich zu deiner Erholung, deinem
++Schlaf, deinem Training oder jeder Kennzahl in deinen Daten." Do not partially
++comply (no code snippets, no exceptions).
+ 
+-# How OpenStrap measures things (interpret correctly)
++# How CM Health measures things (interpret correctly)
+ - Resting HR: 5th-percentile sleeping HR. Lower trend = fitter/recovered.
+ - Strain: Banister TRIMP, log-squashed to 0–21 (like WHOOP). Daily load.
+ - HRV: RMSSD/SDNN/pNN50 from real RR intervals. Higher RMSSD = more recovered.
+@@ -100,7 +106,7 @@ Action tools — the app ASKS THE USER TO CONFIRM before any write. Only when cl
+ - Keep structure light: at most ONE short "##" heading; do NOT use horizontal rules (---) or
+   stacks of headings. Bullets ("- ") are fine.
+ - Emoji: use real Unicode sparingly (✅ ⚠️). NEVER colon shortcodes like ":warning:".
+-- End with ONE line "Not medical advice." ONLY when you gave health guidance — not every message.
++- End with ONE line "Keine medizinische Beratung." ONLY when you gave health guidance — not every message.
+ 
+ # Honesty (non-negotiable)
+ Never fabricate. Missing data → say so and show "—". Respect honest scope (sleep stages = beta;
+diff --git a/lib/compute/derivation_engine.dart b/lib/compute/derivation_engine.dart
+index b568d68..720890f 100644
+--- a/lib/compute/derivation_engine.dart
++++ b/lib/compute/derivation_engine.dart
+@@ -2513,9 +2513,9 @@ class DerivationEngine {
+             dedupeKey: '${day.date}:auto_workout:${nb.endSec}',
+             category: NotifCategory.recovery,
+             priority: NotifPriority.normal,
+-            title: 'Did you work out?',
+-            body: 'We spotted ~${nb.durationMin} min of elevated activity. '
+-                'Tap to log it.',
++            title: 'Hast du trainiert?',
++            body: 'Wir haben ~${nb.durationMin} min erhöhte Aktivität erkannt. '
++                'Tippe, um sie zu loggen.',
+             date: day.date,
+             route: kRouteWorkoutSuggestion,
+           ),
+@@ -3131,41 +3131,41 @@ class DerivationEngine {
+       if (illness != null && illness['state'] == 'red') {
+         await emit(
+           'illness',
+-          'Possible illness onset',
+-          'Elevated resting HR + suppressed HRV over recent nights.',
++          'Mögliche beginnende Krankheit',
++          'Erhöhter Ruhepuls + gedämpfte HRV in den letzten Nächten.',
+           route: '/heart',
+         );
+       }
+       if (anomaly != null && anomaly['flagged'] == true) {
+         await emit(
+           'anomaly',
+-          'Unusual overnight physiology',
+-          'Your nightly signals deviate from your personal baseline.',
++          'Ungewöhnliche nächtliche Physiologie',
++          'Deine nächtlichen Signale weichen von deiner persönlichen Baseline ab.',
+           route: '/heart',
+         );
+       }
+       if (temp != null && temp['flag'] == 'elevated') {
+         await emit(
+           'temp',
+-          'Skin temperature elevated',
+-          'Sustained rise vs your baseline — a possible illness signal.',
++          'Hauttemperatur erhöht',
++          'Anhaltender Anstieg gegenüber deiner Baseline — ein mögliches Krankheitssignal.',
+           route: '/body',
+         );
+       }
+       // 24/7 irregular-rhythm SCREEN (not a diagnosis). Fires at most once/day.
+       final irregFlag = await LocalDb.metricValueOn(date, 'irregular_rhythm_flag');
+       if (irregFlag == 1.0) {
+-        await emit('irregular', 'Irregular heart rhythm — screen',
+-            'Your beat-to-beat pattern looked irregular today. This is a screen, '
+-            'not a diagnosis — see a clinician if you have symptoms.',
++        await emit('irregular', 'Unregelmäßiger Herzrhythmus — Screening',
++            'Dein Schlag-zu-Schlag-Muster sah heute unregelmäßig aus. Das ist '
++            'ein Screening, keine Diagnose — geh bei Symptomen zu einem Arzt.',
+             route: '/heart');
+       }
+       final score = gb?['value'] is Map ? (gb!['value'] as Map)['score'] : null;
+       if (score is num && score < 34) {
+         await emit(
+           'readiness',
+-          'Low readiness today',
+-          'Your recovery markers are below your usual range — ease off.',
++          'Niedrige Tagesform heute',
++          'Deine Erholungswerte liegen unter deinem üblichen Bereich — mach langsamer.',
+           category: NotifCategory.recovery,
+           priority: NotifPriority.normal,
+           route: '/today',
+@@ -3187,11 +3187,11 @@ class DerivationEngine {
+       if (rhrSeries.length >= 10) {
+         final dets = ana.cusumChangePoints(rhrSeries, h: 5.0);
+         if (dets.isNotEmpty && dets.last.index == rhrSeries.length - 1) {
+-          final dir = dets.last.direction > 0 ? 'risen' : 'fallen';
++          final dir = dets.last.direction > 0 ? 'gestiegen' : 'gesunken';
+           await emit(
+             'changed',
+-            'Your resting heart-rate trend shifted',
+-            'Your resting HR has $dir noticeably versus your recent baseline.',
++            'Dein Ruhepuls-Trend hat sich verschoben',
++            'Dein Ruhepuls ist gegenüber deiner letzten Baseline deutlich $dir.',
+             category: NotifCategory.recovery,
+             priority: NotifPriority.normal,
+             route: '/heart',
+diff --git a/lib/compute/manual_session.dart b/lib/compute/manual_session.dart
+index 0c4907d..3bb51b0 100644
+--- a/lib/compute/manual_session.dart
++++ b/lib/compute/manual_session.dart
+@@ -65,12 +65,12 @@ extension ManualWindowErrorMessage on ManualWindowError {
+   /// User-facing copy. Plain, specific, no jargon.
+   String get message => switch (this) {
+         ManualWindowError.endNotAfterStart =>
+-          'The end time has to be after the start time.',
+-        ManualWindowError.tooShort => 'A workout has to be at least a minute.',
+-        ManualWindowError.tooLong => "That's longer than 24 hours — check the date.",
+-        ManualWindowError.inFuture => "That window hasn't happened yet.",
++          'Die Endzeit muss nach der Startzeit liegen.',
++        ManualWindowError.tooShort => 'Ein Workout muss mindestens eine Minute dauern.',
++        ManualWindowError.tooLong => 'Das ist länger als 24 Stunden — prüfe das Datum.',
++        ManualWindowError.inFuture => 'Dieses Zeitfenster liegt in der Zukunft.',
+         ManualWindowError.overlapsExisting =>
+-          'That overlaps a workout already in your log.',
++          'Das überschneidet sich mit einem Workout in deinem Log.',
+       };
+ }
+ 
+diff --git a/lib/data/auto_backup.dart b/lib/data/auto_backup.dart
+index bbd4416..b4801ff 100644
+--- a/lib/data/auto_backup.dart
++++ b/lib/data/auto_backup.dart
+@@ -36,9 +36,9 @@ enum BackupCadence {
+   weekly;
+ 
+   String get label => switch (this) {
+-    BackupCadence.off => 'Off',
+-    BackupCadence.daily => 'Daily',
+-    BackupCadence.weekly => 'Weekly',
++    BackupCadence.off => 'Aus',
++    BackupCadence.daily => 'Täglich',
++    BackupCadence.weekly => 'Wöchentlich',
+   };
+ 
+   Duration? get interval => switch (this) {
+diff --git a/lib/data/csv_export.dart b/lib/data/csv_export.dart
+index 519e1ae..e0f6e5d 100644
+--- a/lib/data/csv_export.dart
++++ b/lib/data/csv_export.dart
+@@ -42,7 +42,7 @@ class CsvExportSet {
+ const kCsvExportSets = <CsvExportSet>[
+   CsvExportSet(
+     name: 'daily',
+-    title: 'Daily metrics',
++    title: 'Tägliche Metriken',
+     columns: [
+       'date',
+       'readiness',
+@@ -95,14 +95,14 @@ const kCsvExportSets = <CsvExportSet>[
+   ),
+   CsvExportSet(
+     name: 'sleep',
+-    title: 'Sleep stages',
++    title: 'Schlafphasen',
+     columns: ['date', 'start_ts', 'end_ts', 'stage'],
+     sql: 'SELECT date, start_ts, end_ts, stage FROM v_hypnogram '
+         'ORDER BY date ASC, start_ts ASC',
+   ),
+   CsvExportSet(
+     name: 'metrics',
+-    title: 'Metric history',
++    title: 'Metrik-Verlauf',
+     columns: ['date', 'key', 'value'],
+     sql: 'SELECT date, key, value FROM v_metric ORDER BY date ASC, key ASC',
+   ),
+@@ -115,7 +115,7 @@ const kCsvExportSets = <CsvExportSet>[
+   ),
+   CsvExportSet(
+     name: 'labs',
+-    title: 'Lab results',
++    title: 'Laborwerte',
+     columns: ['taken_on', 'marker', 'value', 'unit', 'note'],
+     sql: 'SELECT taken_on, marker, value, unit, note FROM lab_result '
+         'ORDER BY taken_on ASC, marker ASC',
+diff --git a/lib/data/db.dart b/lib/data/db.dart
+index 2fe1607..5b8ebe0 100644
+--- a/lib/data/db.dart
++++ b/lib/data/db.dart
+@@ -3398,7 +3398,7 @@ class LocalDb {
+   static Future<String> exportDaysDb(Set<String> dayIds) async {
+     final sorted = dayIds.toList()..sort();
+     if (sorted.isEmpty) {
+-      throw ArgumentError('No days selected');
++      throw ArgumentError('Keine Tage ausgewählt');
+     }
+     final src = await instance;
+     final tmp = await getTemporaryDirectory();
+@@ -3712,7 +3712,7 @@ class LocalDb {
+   /// of rows actually copied.
+   static Future<Map<String, int>> importFromDbFile(String path) async {
+     if (!await File(path).exists()) {
+-      throw const FileSystemException('Backup file not found');
++      throw const FileSystemException('Backup-Datei nicht gefunden');
+     }
+     final src = await openDatabase(path, readOnly: true);
+     final db = await instance;
+diff --git a/lib/data/journal_fields.dart b/lib/data/journal_fields.dart
+index f87d4db..63e1095 100644
+--- a/lib/data/journal_fields.dart
++++ b/lib/data/journal_fields.dart
+@@ -113,7 +113,7 @@ class JournalFieldSpec {
+ const kJournalFields = <JournalFieldSpec>[
+   JournalFieldSpec(
+     key: 'mood',
+-    label: 'Mood',
++    label: 'Stimmung',
+     kind: JournalFieldKind.rating,
+     unit: '',
+     max: 5,
+@@ -121,7 +121,7 @@ const kJournalFields = <JournalFieldSpec>[
+   ),
+   JournalFieldSpec(
+     key: 'sleep_quality',
+-    label: 'Sleep quality',
++    label: 'Schlafqualität',
+     kind: JournalFieldKind.rating,
+     unit: '',
+     max: 5,
+@@ -129,7 +129,7 @@ const kJournalFields = <JournalFieldSpec>[
+   ),
+   JournalFieldSpec(
+     key: 'energy',
+-    label: 'Energy',
++    label: 'Energie',
+     kind: JournalFieldKind.rating,
+     unit: '',
+     max: 5,
+@@ -145,7 +145,7 @@ const kJournalFields = <JournalFieldSpec>[
+   ),
+   JournalFieldSpec(
+     key: 'soreness',
+-    label: 'Soreness',
++    label: 'Muskelkater',
+     kind: JournalFieldKind.rating,
+     unit: '',
+     max: 5,
+@@ -153,7 +153,7 @@ const kJournalFields = <JournalFieldSpec>[
+   ),
+   JournalFieldSpec(
+     key: 'water_ml',
+-    label: 'Water',
++    label: 'Wasser',
+     kind: JournalFieldKind.dose,
+     unit: 'ml',
+     max: 6000,
+@@ -165,7 +165,7 @@ const kJournalFields = <JournalFieldSpec>[
+   // anything.
+   JournalFieldSpec(
+     key: 'caffeine_mg',
+-    label: 'Caffeine',
++    label: 'Koffein',
+     kind: JournalFieldKind.dose,
+     unit: 'mg',
+     max: 1000,
+@@ -174,16 +174,16 @@ const kJournalFields = <JournalFieldSpec>[
+   ),
+   JournalFieldSpec(
+     key: 'alcohol_units',
+-    label: 'Alcohol',
++    label: 'Alkohol',
+     kind: JournalFieldKind.dose,
+-    unit: 'units',
++    unit: 'Einheiten',
+     max: 20,
+     step: 1,
+     hasTime: true,
+   ),
+   JournalFieldSpec(
+     key: 'screens_min',
+-    label: 'Screens before bed',
++    label: 'Bildschirmzeit vor dem Schlafen',
+     kind: JournalFieldKind.duration,
+     unit: 'min',
+     max: 480,
+diff --git a/lib/data/lab_catalogue.dart b/lib/data/lab_catalogue.dart
+index fe1ac1d..009f6e9 100644
+--- a/lib/data/lab_catalogue.dart
++++ b/lib/data/lab_catalogue.dart
+@@ -33,14 +33,14 @@ enum LabCategory {
+ 
+ extension LabCategoryLabel on LabCategory {
+   String get label => switch (this) {
+-    LabCategory.blood => 'Blood count',
+-    LabCategory.iron => 'Iron',
+-    LabCategory.metabolic => 'Metabolic',
+-    LabCategory.lipids => 'Lipids',
+-    LabCategory.hormones => 'Hormones',
+-    LabCategory.vitamins => 'Vitamins & minerals',
+-    LabCategory.inflammation => 'Inflammation',
+-    LabCategory.organ => 'Liver & kidney',
++    LabCategory.blood => 'Blutbild',
++    LabCategory.iron => 'Eisen',
++    LabCategory.metabolic => 'Stoffwechsel',
++    LabCategory.lipids => 'Blutfette',
++    LabCategory.hormones => 'Hormone',
++    LabCategory.vitamins => 'Vitamine & Mineralstoffe',
++    LabCategory.inflammation => 'Entzündung',
++    LabCategory.organ => 'Leber & Niere',
+   };
+ }
+ 
+@@ -128,7 +128,7 @@ const kLabMarkers = <LabMarker>[
+   // ── Blood count ──────────────────────────────────────────────────────────
+   LabMarker(
+     key: 'hemoglobin',
+-    label: 'Haemoglobin',
++    label: 'Hämoglobin',
+     unit: 'g/dL',
+     category: LabCategory.blood,
+     ranges: [
+@@ -138,7 +138,7 @@ const kLabMarkers = <LabMarker>[
+   ),
+   LabMarker(
+     key: 'hematocrit',
+-    label: 'Haematocrit',
++    label: 'Hämatokrit',
+     unit: '%',
+     category: LabCategory.blood,
+     ranges: [
+@@ -157,12 +157,12 @@ const kLabMarkers = <LabMarker>[
+       LabRefRange(low: 30, high: 400, scope: LabRefScope.male),
+       LabRefRange(low: 15, high: 200, scope: LabRefScope.female),
+     ],
+-    note: 'Rises with inflammation, so a normal value does not by itself rule '
+-        'out low iron stores.',
++    note: 'Steigt bei Entzündungen — ein normaler Wert schließt niedrige '
++        'Eisenspeicher daher nicht allein aus.',
+   ),
+   LabMarker(
+     key: 'transferrin_saturation',
+-    label: 'Transferrin saturation',
++    label: 'Transferrinsättigung',
+     unit: '%',
+     category: LabCategory.iron,
+     decimals: 0,
+@@ -175,11 +175,11 @@ const kLabMarkers = <LabMarker>[
+     unit: '%',
+     category: LabCategory.metabolic,
+     ranges: [LabRefRange(low: 4.0, high: 5.6)],
+-    note: 'Reflects roughly the last three months, not today.',
++    note: 'Spiegelt grob die letzten drei Monate wider, nicht den heutigen Tag.',
+   ),
+   LabMarker(
+     key: 'glucose_fasting',
+-    label: 'Fasting glucose',
++    label: 'Nüchternglukose',
+     unit: 'mg/dL',
+     category: LabCategory.metabolic,
+     decimals: 0,
+@@ -187,7 +187,7 @@ const kLabMarkers = <LabMarker>[
+   ),
+   LabMarker(
+     key: 'insulin_fasting',
+-    label: 'Fasting insulin',
++    label: 'Nüchterninsulin',
+     unit: 'µIU/mL',
+     category: LabCategory.metabolic,
+     ranges: [LabRefRange(low: 2.6, high: 24.9)],
+@@ -195,7 +195,7 @@ const kLabMarkers = <LabMarker>[
+   // ── Lipids ───────────────────────────────────────────────────────────────
+   LabMarker(
+     key: 'cholesterol_total',
+-    label: 'Total cholesterol',
++    label: 'Gesamtcholesterin',
+     unit: 'mg/dL',
+     category: LabCategory.lipids,
+     decimals: 0,
+@@ -203,7 +203,7 @@ const kLabMarkers = <LabMarker>[
+   ),
+   LabMarker(
+     key: 'ldl',
+-    label: 'LDL cholesterol',
++    label: 'LDL-Cholesterin',
+     unit: 'mg/dL',
+     category: LabCategory.lipids,
+     decimals: 0,
+@@ -211,7 +211,7 @@ const kLabMarkers = <LabMarker>[
+   ),
+   LabMarker(
+     key: 'hdl',
+-    label: 'HDL cholesterol',
++    label: 'HDL-Cholesterin',
+     unit: 'mg/dL',
+     category: LabCategory.lipids,
+     decimals: 0,
+@@ -222,7 +222,7 @@ const kLabMarkers = <LabMarker>[
+   ),
+   LabMarker(
+     key: 'triglycerides',
+-    label: 'Triglycerides',
++    label: 'Triglyceride',
+     unit: 'mg/dL',
+     category: LabCategory.lipids,
+     decimals: 0,
+@@ -247,7 +247,7 @@ const kLabMarkers = <LabMarker>[
+   ),
+   LabMarker(
+     key: 'free_t4',
+-    label: 'Free T4',
++    label: 'Freies T4',
+     unit: 'ng/dL',
+     decimals: 2,
+     category: LabCategory.hormones,
+@@ -255,7 +255,7 @@ const kLabMarkers = <LabMarker>[
+   ),
+   LabMarker(
+     key: 'testosterone_total',
+-    label: 'Total testosterone',
++    label: 'Gesamttestosteron',
+     unit: 'ng/dL',
+     decimals: 0,
+     category: LabCategory.hormones,
+@@ -263,11 +263,11 @@ const kLabMarkers = <LabMarker>[
+       LabRefRange(low: 300, high: 1000, scope: LabRefScope.male),
+       LabRefRange(low: 15, high: 70, scope: LabRefScope.female),
+     ],
+-    note: 'Varies through the day — morning draws are the comparable ones.',
++    note: 'Schwankt über den Tag — vergleichbar sind Abnahmen am Morgen.',
+   ),
+   LabMarker(
+     key: 'cortisol_am',
+-    label: 'Morning cortisol',
++    label: 'Morgen-Cortisol',
+     unit: 'µg/dL',
+     category: LabCategory.hormones,
+     ranges: [LabRefRange(low: 6, high: 23)],
+@@ -291,7 +291,7 @@ const kLabMarkers = <LabMarker>[
+   ),
+   LabMarker(
+     key: 'folate',
+-    label: 'Folate',
++    label: 'Folat',
+     unit: 'ng/mL',
+     category: LabCategory.vitamins,
+     ranges: [LabRefRange(low: 3.0, high: 20.0)],
+@@ -312,7 +312,7 @@ const kLabMarkers = <LabMarker>[
+     decimals: 2,
+     category: LabCategory.inflammation,
+     ranges: [LabRefRange(low: 0, high: 3.0)],
+-    note: 'Any recent infection or hard training block can lift this.',
++    note: 'Jede frische Infektion oder ein harter Trainingsblock kann diesen Wert anheben.',
+   ),
+   // ── Liver & kidney ───────────────────────────────────────────────────────
+   LabMarker(
+@@ -336,7 +336,7 @@ const kLabMarkers = <LabMarker>[
+   ),
+   LabMarker(
+     key: 'creatinine',
+-    label: 'Creatinine',
++    label: 'Kreatinin',
+     unit: 'mg/dL',
+     decimals: 2,
+     category: LabCategory.organ,
+@@ -344,8 +344,8 @@ const kLabMarkers = <LabMarker>[
+       LabRefRange(low: 0.74, high: 1.35, scope: LabRefScope.male),
+       LabRefRange(low: 0.59, high: 1.04, scope: LabRefScope.female),
+     ],
+-    note: 'Muscle mass lifts this, so it reads high in some athletes without '
+-        'anything being wrong.',
++    note: 'Muskelmasse hebt diesen Wert an — bei manchen Sportlern liest er '
++        'sich hoch, ohne dass etwas nicht stimmt.',
+   ),
+   LabMarker(
+     key: 'egfr',
+diff --git a/lib/data/local_repository_impl.dart b/lib/data/local_repository_impl.dart
+index 543add7..d83232d 100644
+--- a/lib/data/local_repository_impl.dart
++++ b/lib/data/local_repository_impl.dart
+@@ -1600,53 +1600,53 @@ class LocalRepositoryImpl extends LocalRepository {
+   (String, String) _unitLabel(String metric) {
+     switch (metric) {
+       case 'resting_hr':
+-        return ('bpm', 'resting HR');
++        return ('bpm', 'Ruhepuls');
+       case 'hrv':
+         return ('ms', 'HRV');
+       case 'recovery':
+-        return ('%', 'recovery');
++        return ('%', 'Erholung');
+       case 'strain':
+-        return ('', 'strain');
++        return ('', 'Belastung');
+       case 'stress':
+-        return ('', 'stress');
++        return ('', 'Stress');
+       case 'spo2':
+-        return ('dips/h', 'oxygen dips');
++        return ('dips/h', 'Sauerstoffabfälle');
+       case 'sleep':
+-        return ('h', 'sleep');
++        return ('h', 'Schlaf');
+       case 'active_min':
+-        return ('min', 'active');
++        return ('min', 'aktiv');
+       case 'calories':
+-        return ('kcal', 'calories');
++        return ('kcal', 'Kalorien');
+       case 'calories_total':
+-        return ('kcal', 'total calories');
++        return ('kcal', 'Gesamtkalorien');
+       case 'steps':
+-        return ('steps', 'steps');
++        return ('Schritte', 'Schritte');
+       case 'resp_rate':
+-        return ('rpm', 'respiratory rate');
++        return ('rpm', 'Atemfrequenz');
+       case 'light':
+-        return ('min', 'light sleep');
++        return ('min', 'Leichtschlaf');
+       case 'deep':
+-        return ('min', 'deep sleep');
++        return ('min', 'Tiefschlaf');
+       case 'rem':
+-        return ('min', 'REM sleep');
++        return ('min', 'REM-Schlaf');
+       case 'tst':
+-        return ('min', 'time asleep');
++        return ('min', 'Schlafzeit');
+       case 'lf_hf':
+         return ('', 'LF / HF');
+       case 'hrv_cv':
+-        return ('%', 'HRV stability');
++        return ('%', 'HRV-Stabilität');
+       case 'dip':
+-        return ('%', 'nocturnal HR dip');
++        return ('%', 'nächtlicher HF-Abfall');
+       case 'efficiency':
+-        return ('%', 'sleep efficiency');
++        return ('%', 'Schlafeffizienz');
+       case 'wear':
+-        return ('', 'wear'); // minutes; the screen formats as Hh Mm
++        return ('', 'Tragezeit'); // minutes; the screen formats as Hh Mm
+       case 'skin_temp':
+-        return ('', 'skin temp'); // relative z vs baseline
++        return ('', 'Hauttemperatur'); // relative z vs baseline
+       case 'hrr':
+-        return ('bpm', 'HR recovery'); // 60-s post-exercise drop; higher = fitter
++        return ('bpm', 'HF-Erholung'); // 60-s post-exercise drop; higher = fitter
+       case 'brv':
+-        return ('', 'breathing variability'); // CV of per-window respiratory rate
++        return ('', 'Atemvariabilität'); // CV of per-window respiratory rate
+       default:
+         return ('', metric);
+     }
+@@ -1851,9 +1851,9 @@ class LocalRepositoryImpl extends LocalRepository {
+       'records': records,
+       'streaks': {
+         if (wearStreak > 0)
+-          'wear': {'current': wearStreak, 'label': 'Days tracked in a row'},
++          'wear': {'current': wearStreak, 'label': 'Tage in Folge getrackt'},
+         if (sleepStreak > 0)
+-          'sleep': {'current': sleepStreak, 'label': 'Nights of sleep in a row'},
++          'sleep': {'current': sleepStreak, 'label': 'Nächte mit Schlaf in Folge'},
+       },
+       ..._rhrDriftOf(await LocalDb.metricSeries('rhr')),
+     };
+@@ -2113,7 +2113,7 @@ class LocalRepositoryImpl extends LocalRepository {
+   /// 1 Hz HR — the shape the zones card + summary bar parse.
+   List<Map<String, dynamic>> _zoneBands(List<int> hr) {
+     final maxHr = _profileMaxHr();
+-    const names = ['Warm-up', 'Fat burn', 'Aerobic', 'Threshold', 'Max effort'];
++    const names = ['Aufwärmen', 'Fettverbrennung', 'Aerob', 'Schwelle', 'Maximalbereich'];
+     const loPct = [0.5, 0.6, 0.7, 0.8, 0.9];
+     final secs = List<int>.filled(5, 0);
+     for (final v in hr) {
+@@ -2789,20 +2789,20 @@ class LocalRepositoryImpl extends LocalRepository {
+     const outcomeDefs = <Map<String, dynamic>>[
+       {
+         'key': 'readiness',
+-        'label': 'Recovery',
++        'label': 'Erholung',
+         'higherBetter': true,
+         'unit': '',
+       },
+       {'key': 'rmssd', 'label': 'HRV', 'higherBetter': true, 'unit': 'ms'},
+       {
+         'key': 'rhr',
+-        'label': 'Resting HR',
++        'label': 'Ruhepuls',
+         'higherBetter': false,
+         'unit': 'bpm',
+       },
+       {
+         'key': 'efficiency',
+-        'label': 'Sleep efficiency',
++        'label': 'Schlafeffizienz',
+         'higherBetter': true,
+         'unit': '%',
+       },
+@@ -3010,7 +3010,7 @@ class LocalRepositoryImpl extends LocalRepository {
+     if (!enabled) {
+       return {
+         'enabled': false,
+-        'note': 'Enable cycle tracking in your profile.',
++        'note': 'Aktiviere Zyklus-Tracking in deinem Profil.',
+       };
+     }
+     final rows = await LocalDb.cycleLogs(); // oldest first
+diff --git a/lib/gestures/device_action.dart b/lib/gestures/device_action.dart
+index f12320b..80d4ef7 100644
+--- a/lib/gestures/device_action.dart
++++ b/lib/gestures/device_action.dart
+@@ -63,27 +63,27 @@ extension DeviceActionX on DeviceAction {
+   String get label {
+     switch (this) {
+       case DeviceAction.none:
+-        return 'Do nothing';
++        return 'Nichts tun';
+       case DeviceAction.mediaPlayPause:
+-        return 'Play / pause music';
++        return 'Musik abspielen / pausieren';
+       case DeviceAction.mediaNext:
+-        return 'Next track';
++        return 'Nächster Titel';
+       case DeviceAction.mediaPrev:
+-        return 'Previous track';
++        return 'Vorheriger Titel';
+       case DeviceAction.volumeUp:
+-        return 'Volume up';
++        return 'Lauter';
+       case DeviceAction.volumeDown:
+-        return 'Volume down';
++        return 'Leiser';
+       case DeviceAction.ringPhone:
+-        return 'Ring my phone';
++        return 'Mein Handy klingeln lassen';
+       case DeviceAction.torch:
+-        return 'Flashlight';
++        return 'Taschenlampe';
+       case DeviceAction.markMoment:
+-        return 'Mark a moment';
++        return 'Moment markieren';
+       case DeviceAction.workoutToggle:
+-        return 'Start / stop workout';
++        return 'Workout starten / beenden';
+       case DeviceAction.broadcastToTasker:
+-        return 'Broadcast to Tasker';
++        return 'Broadcast an Tasker';
+     }
+   }
+ 
+@@ -91,27 +91,27 @@ extension DeviceActionX on DeviceAction {
+   String get blurb {
+     switch (this) {
+       case DeviceAction.none:
+-        return 'Double-tap does nothing.';
++        return 'Doppeltippen tut nichts.';
+       case DeviceAction.mediaPlayPause:
+-        return 'Toggle whatever is playing.';
++        return 'Aktuelle Wiedergabe starten oder pausieren.';
+       case DeviceAction.mediaNext:
+-        return 'Skip to the next track.';
++        return 'Zum nächsten Titel springen.';
+       case DeviceAction.mediaPrev:
+-        return 'Go back a track.';
++        return 'Einen Titel zurückgehen.';
+       case DeviceAction.volumeUp:
+-        return 'Raise media volume a step.';
++        return 'Medienlautstärke eine Stufe erhöhen.';
+       case DeviceAction.volumeDown:
+-        return 'Lower media volume a step.';
++        return 'Medienlautstärke eine Stufe senken.';
+       case DeviceAction.ringPhone:
+-        return 'Play a loud sound so you can find your phone.';
++        return 'Spielt einen lauten Ton ab, damit du dein Handy findest.';
+       case DeviceAction.torch:
+-        return "Toggle your phone's flashlight.";
++        return 'Die Taschenlampe deines Handys ein- oder ausschalten.';
+       case DeviceAction.markMoment:
+-        return 'Tag the current moment in your journal.';
++        return 'Den aktuellen Moment in deinem Journal markieren.';
+       case DeviceAction.workoutToggle:
+-        return 'Begin or end a workout from your wrist.';
++        return 'Ein Workout direkt vom Handgelenk starten oder beenden.';
+       case DeviceAction.broadcastToTasker:
+-        return 'Fire a broadcast intent so Tasker can trigger any automation.';
++        return 'Sendet einen Broadcast-Intent, damit Tasker beliebige Automationen auslösen kann.';
+     }
+   }
+ 
+diff --git a/lib/import/import_container.dart b/lib/import/import_container.dart
+index 384f0fb..86d26bc 100644
+--- a/lib/import/import_container.dart
++++ b/lib/import/import_container.dart
+@@ -203,7 +203,7 @@ Future<ResolvedNoopDatabase?> resolveNoopDatabase(String path) async {
+   } catch (e) {
+     await input.close();
+     throw ImportFormatException(
+-      'Could not read “${p.basename(path)}” as an archive: $e',
++      '„${p.basename(path)}“ konnte nicht als Archiv gelesen werden: $e',
+     );
+   }
+   try {
+@@ -220,9 +220,9 @@ Future<ResolvedNoopDatabase?> resolveNoopDatabase(String path) async {
+ 
+     if (db.size > _kMaxUncompressedBytes) {
+       throw ImportFormatException(
+-        '“${p.basename(path)}” unpacks to '
+-        '${(db.size / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB, which is '
+-        'not something we can import.',
++        '„${p.basename(path)}“ entpackt sich auf '
++        '${(db.size / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB — das '
++        'können wir nicht importieren.',
+       );
+     }
+     final tempDir = await Directory.systemTemp.createTemp('openstrap_noopbak_');
+@@ -256,17 +256,18 @@ Future<ResolvedNoopDatabase?> resolveNoopDatabase(String path) async {
+       final written = await File(destPath).length();
+       if (db.size > 0 && written < db.size) {
+         throw ImportFormatException(
+-          'Unpacking that backup stopped at '
+-          '${(written / (1024 * 1024)).round()} MB of '
+-          '${(db.size / (1024 * 1024)).round()} MB — the phone is probably out '
+-          'of space. Free some up and try again.',
++          'Das Entpacken dieses Backups ist bei '
++          '${(written / (1024 * 1024)).round()} MB von '
++          '${(db.size / (1024 * 1024)).round()} MB stehen geblieben — '
++          'vermutlich ist der Speicher des Telefons voll. Gib Speicherplatz '
++          'frei und versuche es erneut.',
+         );
+       }
+       if (db.size > 0 && written > db.size) {
+         throw ImportFormatException(
+-          '“${p.basename(path)}” does not hold what it says it does — its '
+-          'database unpacked to more than the archive declared. It is likely '
+-          'damaged; export it again.',
++          '„${p.basename(path)}“ enthält nicht, was es angibt — die Datenbank '
++          'hat sich auf mehr entpackt, als das Archiv deklariert. Es ist '
++          'wahrscheinlich beschädigt; exportiere es erneut.',
+         );
+       }
+       return ResolvedNoopDatabase(destPath, tempDir);
+@@ -324,23 +325,23 @@ Future<ResolvedImportFiles> resolveImportCsvPaths(
+           // Only reachable for WHOOP now — a NOOP database (loose or inside a
+           // `.noopbak`) is claimed by [resolveNoopDatabase] before this runs.
+           throw ImportFormatException(
+-            '“${p.basename(path)}” is a database file, not a $flavor CSV '
+-            'export.',
++            '„${p.basename(path)}“ ist eine Datenbankdatei, kein '
++            '$flavor-CSV-Export.',
+           );
+         case ImportContainer.gzip:
+           throw ImportFormatException(
+-            '“${p.basename(path)}” is a gzip archive. Unzip it first and pick '
+-            'the CSV inside.',
++            '„${p.basename(path)}“ ist ein gzip-Archiv. Entpacke es zuerst und '
++            'wähle die CSV darin aus.',
+           );
+         case ImportContainer.utf16:
+           throw ImportFormatException(
+-            '“${p.basename(path)}” is saved as UTF-16 text. Re-save it as '
+-            'UTF-8 CSV and import it again.',
++            '„${p.basename(path)}“ ist als UTF-16-Text gespeichert. Speichere '
++            'die Datei als UTF-8-CSV und importiere sie erneut.',
+           );
+         case ImportContainer.binary:
+           throw ImportFormatException(
+-            '“${p.basename(path)}” is not a text file, so there is nothing to '
+-            'read as a $flavor CSV export.',
++            '„${p.basename(path)}“ ist keine Textdatei — es gibt nichts, das '
++            'sich als $flavor-CSV-Export lesen lässt.',
+           );
+       }
+     }
+@@ -370,14 +371,14 @@ Future<List<String>> _extractCsvMembers(
+   } catch (e) {
+     await input.close();
+     throw ImportFormatException(
+-      'Could not read “$name” as an archive: $e',
++      '„$name“ konnte nicht als Archiv gelesen werden: $e',
+     );
+   }
+ 
+   if (archive.files.length > _kMaxArchiveMembers) {
+     throw ImportFormatException(
+-      '“$name” holds ${archive.files.length} entries, which is far more than '
+-      'any $flavor export — refusing to unpack it.',
++      '„$name“ enthält ${archive.files.length} Einträge — weit mehr als jeder '
++      '$flavor-Export. Es wird nicht entpackt.',
+     );
+   }
+ 
+@@ -390,17 +391,17 @@ Future<List<String>> _extractCsvMembers(
+       csvFiles.fold<int>(0, (sum, f) => sum + (f.size > 0 ? f.size : 0));
+   if (declaredBytes > _kMaxUncompressedBytes) {
+     throw ImportFormatException(
+-      '“$name” unpacks to more than '
+-      '${(declaredBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB of '
+-      'CSV, which is not something we can import.',
++      '„$name“ entpackt sich auf mehr als '
++      '${(declaredBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB CSV — '
++      'das können wir nicht importieren.',
+     );
+   }
+ 
+   if (csvFiles.isEmpty) {
+     throw ImportFormatException(
+-      '“$name” is an archive with no CSV files inside '
+-      '(${archive.files.length} entr${archive.files.length == 1 ? 'y' : 'ies'}). '
+-      'Pick the $flavor CSV export instead.',
++      '„$name“ ist ein Archiv ohne CSV-Dateien '
++      '(${archive.files.length} ${archive.files.length == 1 ? 'Eintrag' : 'Einträge'}). '
++      'Wähle stattdessen den $flavor-CSV-Export aus.',
+     );
+   }
+ 
+diff --git a/lib/import/noop_backup_import.dart b/lib/import/noop_backup_import.dart
+index 608ca9c..267b695 100644
+--- a/lib/import/noop_backup_import.dart
++++ b/lib/import/noop_backup_import.dart
+@@ -83,15 +83,15 @@ class NoopBackupImporter {
+     void Function(int days)? onProgress,
+   }) async {
+     if (!await File(path).exists()) {
+-      throw const ImportFormatException('That backup could not be read.');
++      throw const ImportFormatException('Dieses Backup konnte nicht gelesen werden.');
+     }
+     final Database src;
+     try {
+       src = await openDatabase(path, readOnly: true);
+     } catch (e) {
+       throw ImportFormatException(
+-        'That backup\'s database could not be opened ($e). If it came off '
+-        'another phone, try exporting it again.',
++        'Die Datenbank dieses Backups konnte nicht geöffnet werden ($e). Wenn '
++        'es von einem anderen Telefon stammt, exportiere es dort erneut.',
+       );
+     }
+     try {
+@@ -112,8 +112,8 @@ class NoopBackupImporter {
+     // derived, so its absence is a wrong-file error rather than an empty import.
+     if (!tables.contains('hrSample')) {
+       throw ImportFormatException(
+-        'That database is not a NOOP backup — it has no `hrSample` table '
+-        '(found: ${tables.take(6).join(', ')}${tables.length > 6 ? '…' : ''}).',
++        'Diese Datenbank ist kein NOOP-Backup — sie hat keine `hrSample`-Tabelle '
++        '(gefunden: ${tables.take(6).join(', ')}${tables.length > 6 ? '…' : ''}).',
+       );
+     }
+ 
+@@ -144,8 +144,8 @@ class NoopBackupImporter {
+     if ((columns['hrSample'] ?? const []).length <
+         _kTableCols['hrSample']!.length) {
+       throw const ImportFormatException(
+-        'That database has an `hrSample` table without the columns we read '
+-        '(`ts`, `bpm`), so there is no heart rate to import.',
++        'Diese Datenbank hat eine `hrSample`-Tabelle ohne die Spalten, die wir '
++        'lesen (`ts`, `bpm`) — es gibt keine Herzfrequenz zu importieren.',
+       );
+     }
+ 
+@@ -157,7 +157,7 @@ class NoopBackupImporter {
+     final span = await _span(src, readable);
+     if (span == null) {
+       throw const ImportFormatException(
+-        'That NOOP backup holds no samples — there is nothing to import.',
++        'Dieses NOOP-Backup enthält keine Samples — es gibt nichts zu importieren.',
+       );
+     }
+     final (minTs, maxTs) = span;
+@@ -221,7 +221,7 @@ class NoopBackupImporter {
+ 
+     if (ingest.rows == 0) {
+       throw const ImportFormatException(
+-        'That NOOP backup holds no samples we could read.',
++        'Dieses NOOP-Backup enthält keine Samples, die wir lesen konnten.',
+       );
+     }
+     await ingest.finish();
+diff --git a/lib/import/noop_import.dart b/lib/import/noop_import.dart
+index 6cfe992..8a6443a 100644
+--- a/lib/import/noop_import.dart
++++ b/lib/import/noop_import.dart
+@@ -92,7 +92,7 @@ class NoopImporter {
+   }) async {
+     var file = File(path);
+     if (!await file.exists()) {
+-      throw const FileSystemException('File not found');
++      throw const FileSystemException('Datei nicht gefunden');
+     }
+     // What did the user actually pick? Feeding a `.noopbak`'s bytes to
+     // `utf8.decoder` is what produced "Invalid UTF-8 byte (at offset 10)" in
+@@ -117,7 +117,7 @@ class NoopImporter {
+     if (resolved.paths.isEmpty) {
+       await resolved.dispose();
+       throw const ImportFormatException(
+-        'That archive holds no NOOP CSV export.',
++        'Dieses Archiv enthält keinen NOOP-CSV-Export.',
+       );
+     }
+     // A NOOP raw-sensor export is ONE CSV. An archive holding several is not
+@@ -132,8 +132,9 @@ class NoopImporter {
+       final names = usable.map(_basenameOf).take(4).join(', ');
+       await resolved.dispose();
+       throw ImportFormatException(
+-        'That archive holds ${usable.length} CSV files ($names…). Import the '
+-        'raw sensor CSV on its own so nothing is silently skipped.',
++        'Dieses Archiv enthält ${usable.length} CSV-Dateien ($names…). '
++        'Importiere die Rohsensor-CSV einzeln, damit nichts stillschweigend '
++        'übersprungen wird.',
+       );
+     }
+     file = File(usable.first);
+@@ -242,14 +243,15 @@ class NoopImporter {
+       final head = firstLine ?? '';
+       final preview = head.isEmpty
+           ? ''
+-          : ' (first line: "${head.length > 80 ? '${head.substring(0, 80)}…' : head}")';
++          : ' (erste Zeile: "${head.length > 80 ? '${head.substring(0, 80)}…' : head}")';
+       throw ImportFormatException(
+         sawHeader
+-            ? 'That NOOP export has a header we recognise but no rows we could '
+-                'read — every row was empty or out of range.'
+-            : 'That file does not look like a NOOP raw-sensor export: no '
+-                '"unix_s,…" header row was found$preview. In NOOP, use '
+-                'Export → raw sensor CSV, or import a .noopbak backup.',
++            ? 'Dieser NOOP-Export hat eine bekannte Kopfzeile, aber keine '
++                'lesbaren Zeilen — jede Zeile war leer oder außerhalb des '
++                'gültigen Bereichs.'
++            : 'Diese Datei sieht nicht wie ein NOOP-Rohsensor-Export aus: keine '
++                '"unix_s,…"-Kopfzeile gefunden$preview. Nutze in NOOP '
++                'Export → raw sensor CSV oder importiere ein .noopbak-Backup.',
+       );
+     }
+ 
+diff --git a/lib/import/whoop_import.dart b/lib/import/whoop_import.dart
+index 4e22236..d3531a6 100644
+--- a/lib/import/whoop_import.dart
++++ b/lib/import/whoop_import.dart
+@@ -166,13 +166,14 @@ class WhoopImporter {
+     if (recognisedFiles == 0) {
+       throw ImportFormatException(
+         csvPaths.isEmpty
+-            ? 'No CSV files were found to import.'
+-            : 'None of those files look like a WHOOP export. We match the '
+-                  'English column names WHOOP writes (e.g. "Recovery score %", '
+-                  '"Activity name", "Sleep onset"), so an export downloaded in '
+-                  'another language will not be recognised — re-download it '
+-                  'with WHOOP set to English.'
+-                  '${headersSeen.isEmpty ? '' : ' Columns found: ${headersSeen.first}.'}',
++            ? 'Es wurden keine CSV-Dateien zum Importieren gefunden.'
++            : 'Keine dieser Dateien sieht wie ein WHOOP-Export aus. Wir '
++                  'erkennen die englischen Spaltennamen, die WHOOP schreibt '
++                  '(z. B. "Recovery score %", "Activity name", "Sleep onset") — '
++                  'ein in einer anderen Sprache heruntergeladener Export wird '
++                  'daher nicht erkannt. Lade ihn erneut herunter, während WHOOP '
++                  'auf Englisch eingestellt ist.'
++                  '${headersSeen.isEmpty ? '' : ' Gefundene Spalten: ${headersSeen.first}.'}',
+       );
+     }
+ 
+diff --git a/lib/models/metric.dart b/lib/models/metric.dart
+index 73d2ea7..0a39508 100644
+--- a/lib/models/metric.dart
++++ b/lib/models/metric.dart
+@@ -143,9 +143,11 @@ String? needMessageFromNote(String? note, {String unit = 'nights'}) {
+   final n = needMoreNightsFromNote(note);
+   if (n == null) return null;
+   if (unit == 'days') {
+-    return 'Wear $n more day${n == 1 ? '' : 's'} to unlock';
++    return n == 1
++        ? 'Trage das Band noch 1 Tag zum Freischalten'
++        : 'Trage das Band noch $n Tage zum Freischalten';
+   }
+-  return 'Need $n more night${n == 1 ? '' : 's'}';
++  return n == 1 ? 'Noch 1 Nacht nötig' : 'Noch $n Nächte nötig';
+ }
+ 
+ /// Pull a per-metric flag map ({c, tier, label, beta}) out of a row's `flags`
+diff --git a/lib/models/payloads.dart b/lib/models/payloads.dart
+index 6c6a7b3..d3948f8 100644
+--- a/lib/models/payloads.dart
++++ b/lib/models/payloads.dart
+@@ -286,10 +286,10 @@ class StressData {
+   /// A short human label for the day's stress level.
+   String get band {
+     final v = score ?? 0;
+-    if (v < 25) return 'Calm day';
+-    if (v < 50) return 'Balanced';
+-    if (v < 75) return 'Elevated';
+-    return 'High arousal';
++    if (v < 25) return 'Ruhiger Tag';
++    if (v < 50) return 'Ausgeglichen';
++    if (v < 75) return 'Erhöht';
++    return 'Hohe Anspannung';
+   }
+ }
+ 
+diff --git a/lib/notify/battery_forecast.dart b/lib/notify/battery_forecast.dart
+index d7e445d..1b9599b 100644
+--- a/lib/notify/battery_forecast.dart
++++ b/lib/notify/battery_forecast.dart
+@@ -342,10 +342,10 @@ class BatteryForecaster {
+     if (rate == null || pct == null || empty == null) return '';
+     final h = empty.hour.toString().padLeft(2, '0');
+     final m = empty.minute.toString().padLeft(2, '0');
+-    final head = 'At ${rate.toStringAsFixed(1)}%/h it runs out around $h:$m';
++    final head = 'Bei ${rate.toStringAsFixed(1)}%/h ist der Akku gegen $h:$m leer';
+     return empty.isBefore(wakeAt)
+-        ? '$head — before you wake. Charge it now to keep tonight\'s sleep.'
+-        : '$head, after your usual wake time.';
++        ? '$head — noch bevor du aufwachst. Lade es jetzt, um die heutige Nacht zu sichern.'
++        : '$head, nach deiner üblichen Aufwachzeit.';
+   }
+ 
+   /// Whole hours remaining at the current rate, for compact UI. Null when the
+diff --git a/lib/notify/device_alerts.dart b/lib/notify/device_alerts.dart
+index e35174d..0680080 100644
+--- a/lib/notify/device_alerts.dart
++++ b/lib/notify/device_alerts.dart
+@@ -273,8 +273,8 @@ class DeviceAlerts {
+     if (announce) {
+       await _io(() => _notes.show(
+             id: NotificationService.idCharging,
+-            title: 'Charging',
+-            body: 'Your band is on the charger.',
++            title: 'Lädt',
++            body: 'Dein Band ist auf dem Ladegerät.',
+           ));
+       await _io(() => _store.writeInt(_kLastChargeWall, nowSec));
+       if (persistEventTs != null) {
+@@ -286,8 +286,8 @@ class DeviceAlerts {
+     if (fireLow) {
+       await _io(() => _notes.show(
+             id: NotificationService.idLowBattery,
+-            title: 'Low battery',
+-            body: 'Your band is at ${batteryPct.round()}%. Charge it soon.',
++            title: 'Akku schwach',
++            body: 'Dein Band ist bei ${batteryPct.round()}%. Lade es bald auf.',
+           ));
+     }
+     if (lowArmedChanged) {
+diff --git a/lib/notify/notification_center.dart b/lib/notify/notification_center.dart
+index a99d3b3..de5233d 100644
+--- a/lib/notify/notification_center.dart
++++ b/lib/notify/notification_center.dart
+@@ -185,12 +185,12 @@ class NotificationCenter {
+     await svc.scheduleDaily(
+       id: NotificationService.idWindDown,
+       category: NotifCategory.reminders,
+-      title: 'Time to sleep',
++      title: 'Zeit zu schlafen',
+       body: bedtimeMinOfDay != null
+-          ? 'To meet your sleep need, aim to be in bed around now — a consistent '
+-              'bedtime steadies your recovery.'
+-          : 'A consistent bedtime steadies your recovery — start easing off '
+-              'screens and lights now.',
++          ? 'Um deinen Schlafbedarf zu decken, geh am besten jetzt ins Bett — '
++              'eine konstante Schlafenszeit stabilisiert deine Erholung.'
++          : 'Eine konstante Schlafenszeit stabilisiert deine Erholung — fahre '
++              'Bildschirme und Licht jetzt langsam herunter.',
+       hour: bedHour,
+       minute: bedMin,
+       route: '/sleep',
+@@ -201,9 +201,9 @@ class NotificationCenter {
+     await svc.scheduleWeekly(
+       id: NotificationService.idWeeklyRecap,
+       category: NotifCategory.reminders,
+-      title: 'Your week in review',
+-      body: 'A new weekly recap is ready — see how your sleep, strain and '
+-          'recovery trended.',
++      title: 'Deine Woche im Rückblick',
++      body: 'Ein neuer Wochenrückblick ist bereit — sieh dir an, wie sich '
++          'Schlaf, Belastung und Erholung entwickelt haben.',
+       weekday: recapWeekday,
+       hour: recapHour,
+       minute: recapMinute,
+@@ -302,8 +302,8 @@ class NotificationCenter {
+       await svc.scheduleDaily(
+         id: NotificationService.idWaterBase + i,
+         category: NotifCategory.reminders,
+-        title: 'Time to hydrate',
+-        body: 'A quick glass of water keeps your recovery and focus steady.',
++        title: 'Zeit, etwas zu trinken',
++        body: 'Ein Glas Wasser hält deine Erholung und Konzentration stabil.',
+         hour: (t ~/ 60) % 24,
+         minute: t % 60,
+         route: '/today',
+diff --git a/lib/notify/notification_service.dart b/lib/notify/notification_service.dart
+index 86060d3..5fcb704 100644
+--- a/lib/notify/notification_service.dart
++++ b/lib/notify/notification_service.dart
+@@ -85,28 +85,28 @@ class NotificationService {
+       AndroidNotificationChannel(
+     'device_alerts',
+     'Device alerts',
+-    description: 'Band battery and charging',
++    description: 'Band-Akku und Laden',
+     importance: Importance.high,
+   );
+   static const AndroidNotificationChannel _healthChannel =
+       AndroidNotificationChannel(
+     'health',
+     'Health alerts',
+-    description: 'Illness, unusual physiology and temperature signals',
++    description: 'Krankheit, ungewöhnliche Physiologie und Temperatursignale',
+     importance: Importance.max,
+   );
+   static const AndroidNotificationChannel _recoveryChannel =
+       AndroidNotificationChannel(
+     'recovery',
+     'Recovery',
+-    description: 'Daily recovery readiness from your own data',
++    description: 'Tägliche Erholung und Tagesform aus deinen eigenen Daten',
+     importance: Importance.defaultImportance,
+   );
+   static const AndroidNotificationChannel _remindersChannel =
+       AndroidNotificationChannel(
+     'reminders',
+     'Reminders',
+-    description: 'Wind-down, movement nudges, goals and weekly recaps',
++    description: 'Schlafenszeit, Bewegungserinnerungen, Ziele und Wochenrückblicke',
+     importance: Importance.defaultImportance,
+   );
+ 
+diff --git a/lib/state/app_state.dart b/lib/state/app_state.dart
+index dbca2b1..50111c1 100644
+--- a/lib/state/app_state.dart
++++ b/lib/state/app_state.dart
+@@ -1308,7 +1308,7 @@ class AppState extends ChangeNotifier {
+               ?.toDouble();
+           if (tstSec != null && tstSec > 0) {
+             final m = (tstSec / 60).round();
+-            slept = ', slept ${m ~/ 60}h ${m % 60}m';
++            slept = ', ${m ~/ 60}h ${m % 60}m geschlafen';
+           }
+         }
+       } catch (_) {
+@@ -1328,8 +1328,8 @@ class AppState extends ChangeNotifier {
+           dedupeKey: '$dayId:recovery_ready',
+           category: NotifCategory.recovery,
+           priority: NotifPriority.normal,
+-          title: 'Your recovery is ready',
+-          body: 'Recovery $score$slept. Tap to see today.',
++          title: 'Deine Erholung ist bereit',
++          body: 'Erholung $score$slept. Tippe, um deinen Tag zu sehen.',
+           date: dayId,
+           route: '/today',
+         ),
+@@ -1459,9 +1459,9 @@ class AppState extends ChangeNotifier {
+           dedupeKey: '$date:step_goal',
+           category: NotifCategory.reminders,
+           priority: NotifPriority.low,
+-          title: 'Step goal reached',
++          title: 'Schrittziel erreicht',
+           body:
+-              'You hit about $steps steps — at or above your $goal goal. Nice work.',
++              'Du hast etwa $steps Schritte geschafft — dein Ziel von $goal ist erreicht. Stark!',
+           date: date,
+           route: '/today',
+         ),
+@@ -1504,9 +1504,9 @@ class AppState extends ChangeNotifier {
+           dedupeKey: '$today:posture:${nowMs ~/ (2 * 60 * 60 * 1000)}',
+           category: NotifCategory.reminders,
+           priority: NotifPriority.low,
+-          title: 'Posture Check & Stretch',
++          title: 'Haltung checken & dehnen',
+           body:
+-              'You’ve been in a typing posture for over 90 minutes without walking. Time to stretch your legs and reset your posture!',
++              'Du bist seit über 90 Minuten in einer Tipp-Haltung, ohne zu gehen. Zeit, die Beine zu vertreten und die Haltung aufzurichten!',
+           date: today,
+           route: '/today',
+         ),
+@@ -1543,9 +1543,9 @@ class AppState extends ChangeNotifier {
+       await NotificationService.instance.scheduleOnce(
+         id: NotificationService.idStillness,
+         category: NotifCategory.reminders,
+-        title: 'Time to move',
++        title: 'Zeit für Bewegung',
+         body:
+-            "You've been still for a couple of hours — a short walk keeps your energy and circulation up.",
++            'Du warst ein paar Stunden ruhig — ein kurzer Spaziergang hält Energie und Kreislauf in Schwung.',
+         at: at,
+         route: '/today',
+       );
+@@ -1568,7 +1568,7 @@ class AppState extends ChangeNotifier {
+   Future<int> reanalyzeAll() async {
+     if (reanalyzing) return 0;
+     reanalyzing = true;
+-    reanalyzeProgress = 'Analyzing…';
++    reanalyzeProgress = 'Analysiere…';
+     notifyListeners();
+     try {
+       final n = await _derive.run(
+@@ -1578,7 +1578,7 @@ class AppState extends ChangeNotifier {
+         // Per-day callback: surface progress AND refresh the UI so each real day's
+         // metrics appear as soon as it's derived (Today fills in one day at a time).
+         onDayDone: (day, index, total) async {
+-          reanalyzeProgress = 'Analyzing $index/$total';
++          reanalyzeProgress = 'Analysiere $index/$total';
+           if (index == total || index == 1 || index % 3 == 0) {
+             dbCounts = await LocalDb.counts();
+             notifyListeners();
+@@ -1675,7 +1675,7 @@ class AppState extends ChangeNotifier {
+     reanalyzing = true;
+     final ordered = days.toList()..sort();
+     reanalyzeProgress =
+-        'Analyzing ${ordered.length} day${ordered.length == 1 ? '' : 's'}…';
++        'Analysiere ${ordered.length} Tag${ordered.length == 1 ? '' : 'e'}…';
+     notifyListeners();
+     try {
+       final n = await _derive.runDays(
+@@ -1683,7 +1683,7 @@ class AppState extends ChangeNotifier {
+         days,
+         force: true,
+         onDayDone: (day, index, total) async {
+-          reanalyzeProgress = 'Analyzing $index/$total';
++          reanalyzeProgress = 'Analysiere $index/$total';
+           if (index == total || index == 1 || index % 3 == 0) {
+             dbCounts = await LocalDb.counts();
+             notifyListeners();
+@@ -2547,7 +2547,7 @@ class AppState extends ChangeNotifier {
+         NotificationEvent(
+           dedupeKey: '$day:battery_overnight',
+           category: NotifCategory.device,
+-          title: 'Charge your strap before bed',
++          title: 'Lade dein Band, bevor du schlafen gehst',
+           body: BatteryForecaster.describe(f, wakeAt: wakeAt),
+           date: day,
+           route: '/profile',
+@@ -3027,7 +3027,7 @@ class AppState extends ChangeNotifier {
+   int? get alarmFiredAt => _alarm.firedAt;
+ 
+   Future<void> setAlarm(DateTime when) async {
+-    if (!isConnected) throw Exception('Connect to your strap first');
++    if (!isConnected) throw Exception('Verbinde zuerst dein Band');
+     final epoch =
+         when.millisecondsSinceEpoch ~/ 1000; // local wall-clock → unix
+     // Pass the DateTime through so the engine computes REAL sub-seconds for the
+@@ -3040,7 +3040,7 @@ class AppState extends ChangeNotifier {
+       // strap to confirm" that can never fire. Surface it so the UI reflects
+       // "couldn't send" (the coach/profile callers snackbar on a throw).
+       _log('[alarm] arm write FAILED — not persisting; alarm not set.');
+-      throw Exception('Alarm not sent — the strap did not accept the write');
++      throw Exception('Wecker nicht gesendet — das Band hat den Befehl nicht angenommen');
+     }
+     _savedAlarm = epoch;
+     device.alarmEpoch = epoch; // optimistic display
+@@ -3104,12 +3104,12 @@ class AppState extends ChangeNotifier {
+   /// Fire the strap's alarm haptics immediately — a "test buzz" so the user can
+   /// confirm the band actually fires before trusting the scheduled wake.
+   Future<void> testAlarmBuzz() async {
+-    if (!isConnected) throw Exception('Connect to your strap first');
++    if (!isConnected) throw Exception('Verbinde zuerst dein Band');
+     await engine.runAlarm();
+   }
+ 
+   Future<void> testBuzzPattern(int pattern) async {
+-    if (!isConnected) throw Exception('Connect to your strap first');
++    if (!isConnected) throw Exception('Verbinde zuerst dein Band');
+     await engine.buzzPattern(pattern);
+   }
+ 
+@@ -3131,7 +3131,7 @@ class AppState extends ChangeNotifier {
+   Future<int?> readBandRssi() => engine.readRssi();
+ 
+   Future<void> disableAlarm() async {
+-    if (!isConnected) throw Exception('Connect to your strap first');
++    if (!isConnected) throw Exception('Verbinde zuerst dein Band');
+     await engine.disableAlarm();
+     _savedAlarm = null;
+     device.alarmEpoch = null;
+@@ -3205,8 +3205,8 @@ class AppState extends ChangeNotifier {
+         dedupeKey: 'alarm_fired:${_alarm.firedAt ?? 0}',
+         category: NotifCategory.reminders,
+         priority: NotifPriority.critical,
+-        title: 'Alarm',
+-        body: 'Your strap alarm just fired.',
++        title: 'Wecker',
++        body: 'Dein Band-Wecker hat gerade ausgelöst.',
+         date: todayLabel(),
+         route: '/today',
+       ));
+@@ -3216,7 +3216,7 @@ class AppState extends ChangeNotifier {
+   }
+ 
+   Future<void> renameStrap(String name) async {
+-    if (!isConnected) throw Exception('Connect to your strap first');
++    if (!isConnected) throw Exception('Verbinde zuerst dein Band');
+     await engine.setStrapName(name);
+     device.strapName = name; // optimistic
+     await engine.getStrapName();
+@@ -3760,7 +3760,7 @@ class AppState extends ChangeNotifier {
+   Future<void> startSpotCheck() async {
+     if (spotActive) return;
+     if (!isConnected) {
+-      spotError = 'Connect your band first.';
++      spotError = 'Verbinde zuerst dein Band.';
+       notifyListeners();
+       return;
+     }
+@@ -3822,12 +3822,12 @@ class AppState extends ChangeNotifier {
+           : await repo!.spotCheck(frames);
+       spotResult = res;
+       if (res == null) {
+-        spotError = 'No reading captured — keep the band snug and still.';
++        spotError = 'Keine Messung erfasst — halte das Band eng anliegend und still.';
+       } else if (res['ok'] != true) {
+-        spotError = 'Not enough clean beats — try again, sitting still.';
++        spotError = 'Zu wenige saubere Herzschläge — versuche es erneut und sitze dabei still.';
+       }
+     } catch (e) {
+-      spotError = 'Spot check failed: ${e is RepositoryException ? e.body : e}';
++      spotError = 'Spot-Check fehlgeschlagen: ${e is RepositoryException ? e.body : e}';
+     } finally {
+       spotActive = false;
+       notifyListeners();
+@@ -3893,7 +3893,7 @@ class AppState extends ChangeNotifier {
+   }) async {
+     if (breathingActive) return;
+     if (!isConnected) {
+-      breathingError = 'Connect your band first.';
++      breathingError = 'Verbinde zuerst dein Band.';
+       notifyListeners();
+       return;
+     }
+@@ -4568,7 +4568,7 @@ class AppState extends ChangeNotifier {
+       } catch (_) {
+         /* fresh day / seam not implemented — start clean */
+       }
+-      tags.add('moment $hhmm');
++      tags.add('Moment $hhmm');
+       await r.postJournal(date, tags, note);
+       _log('[gesture] moment marked at $hhmm');
+       await HapticFeedback.mediumImpact();
+diff --git a/lib/state/units_controller.dart b/lib/state/units_controller.dart
+index 51cdc6d..68701e2 100644
+--- a/lib/state/units_controller.dart
++++ b/lib/state/units_controller.dart
+@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
+ enum UnitSystem { metric, imperial }
+ 
+ extension UnitSystemLabel on UnitSystem {
+-  String get label => this == UnitSystem.imperial ? 'Imperial' : 'Metric';
++  String get label => this == UnitSystem.imperial ? 'Imperial' : 'Metrisch';
+ }
+ 
+ class UnitsController extends ChangeNotifier {
+@@ -144,8 +144,8 @@ class UnitsController extends ChangeNotifier {
+   }
+ 
+   // ── edit-field helpers (display ↔ metric for storage) ──────────────────────
+-  String get weightLabel => isImperial ? 'Weight (lb)' : 'Weight (kg)';
+-  String get heightLabel => isImperial ? 'Height (in)' : 'Height (cm)';
++  String get weightLabel => isImperial ? 'Gewicht (lb)' : 'Gewicht (kg)';
++  String get heightLabel => isImperial ? 'Größe (in)' : 'Größe (cm)';
+ 
+   /// Pre-fill value for the weight field in the user's units.
+   String weightField(num? kg) =>
+diff --git a/lib/theme/theme_controller.dart b/lib/theme/theme_controller.dart
+index fdc20f5..22833ed 100644
+--- a/lib/theme/theme_controller.dart
++++ b/lib/theme/theme_controller.dart
+@@ -22,8 +22,8 @@ enum AppThemeChoice { system, light, dark }
+ extension AppThemeChoiceLabel on AppThemeChoice {
+   String get label => switch (this) {
+         AppThemeChoice.system => 'System',
+-        AppThemeChoice.light => 'Light',
+-        AppThemeChoice.dark => 'Dark',
++        AppThemeChoice.light => 'Hell',
++        AppThemeChoice.dark => 'Dunkel',
+       };
+ }
+ 
