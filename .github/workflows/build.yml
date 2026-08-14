@@ -61,6 +61,16 @@ jobs:
         run: flutter pub get
         working-directory: src
 
+      - name: Generate CM branding assets
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+          pip3 install --quiet pillow numpy
+          cd src && python3 tool/cm_branding.py "$GITHUB_WORKSPACE/cm-assets/cm-logo.png"
+
+      - name: Regenerate launcher icons
+        run: dart run flutter_launcher_icons
+        working-directory: src
+
       - name: Build release APK (arm64)
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks

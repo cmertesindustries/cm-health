@@ -1,0 +1,82 @@
+diff --git a/android/app/build.gradle.kts b/android/app/build.gradle.kts
+index 6930dd0..49c9b10 100644
+--- a/android/app/build.gradle.kts
++++ b/android/app/build.gradle.kts
+@@ -63,7 +63,7 @@ android {
+ 
+     defaultConfig {
+         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+-        applicationId = "wtf.openstrap.openstrap_edge"
++        applicationId = "de.cmertes.cmhealth"
+         // You can update the following values to match your application needs.
+         // For more information, see: https://flutter.dev/to/review-gradle-config.
+         minSdk = maxOf(26, flutter.minSdkVersion) // Health Connect requires API 26+
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index 6b3b686..3b1365b 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -78,7 +78,7 @@
+         android:required="false" />
+ 
+     <application
+-        android:label="Edge"
++        android:label="CM Health"
+         android:name=".EdgeApplication"
+         android:icon="@mipmap/launcher_icon">
+         <!-- ── ZERO-COLLECTION BY DEFAULT (privacy tier 1) ──
+@@ -203,7 +203,7 @@
+              "Notification access" in system settings. Class lives in the plugin. -->
+         <service
+             android:name="notification.listener.service.NotificationListener"
+-            android:label="OpenStrap notification relay"
++            android:label="CM Health notification relay"
+             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+             android:exported="true">
+             <intent-filter>
+diff --git a/android/app/src/main/res/values/colors.xml b/android/app/src/main/res/values/colors.xml
+index a812b9c..be0c083 100644
+--- a/android/app/src/main/res/values/colors.xml
++++ b/android/app/src/main/res/values/colors.xml
+@@ -1,4 +1,4 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <color name="ic_launcher_background">#F4F1EC</color>
++    <color name="ic_launcher_background">#141416</color>
+ </resources>
+\ No newline at end of file
+diff --git a/android/app/src/main/res/values/widget_strings.xml b/android/app/src/main/res/values/widget_strings.xml
+index ce81bb5..dfc4e09 100644
+--- a/android/app/src/main/res/values/widget_strings.xml
++++ b/android/app/src/main/res/values/widget_strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?><!-- Widget-picker labels/descriptions. -->
+ <resources>
+-    <string name="widget_openstrap_label">Edge</string>
++    <string name="widget_openstrap_label">CM Health</string>
+     <string name="widget_openstrap_description">Readiness, strain, sleep and HRV at a glance.</string>
+     <string name="widget_battery_label">Band battery</string>
+     <string name="widget_battery_description">Your strap\'s battery, from the last connection.</string>
+diff --git a/pubspec.yaml b/pubspec.yaml
+index f102c44..580b86e 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -6,7 +6,7 @@ publish_to: 'none'
+ # Watch App" targets in ios/Runner.xcodeproj/project.pbxproj — they aren't wired
+ # to FLUTTER_BUILD_NAME/FLUTTER_BUILD_NUMBER. See guides/IOS_INSTALLATION.md
+ # "Version Numbers".
+-version: 0.9.26+57
++version: 2.0.0+100
+ 
+ environment:
+   sdk: ^3.11.4
+@@ -256,8 +256,8 @@ flutter_launcher_icons:
+   ios: true
+   image_path: "assets/images/icon.png"
+   remove_alpha_ios: true
+-  adaptive_icon_background: "#F4F1EC"
+-  adaptive_icon_foreground: "assets/images/icon.png"
++  adaptive_icon_background: "#141416"
++  adaptive_icon_foreground: "assets/images/icon_fg.png"
+ 
+ flutter:
+   uses-material-design: true
