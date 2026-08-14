@@ -5,16 +5,19 @@ SRC="${1:?usage: apply.sh <src-dir>}"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # 1) Overlay: files copied verbatim over the source tree (icons, new files).
-if [ -d "$REPO_DIR/overlay" ] && [ -n "$(find "$REPO_DIR/overlay" -type f -not -name '.gitkeep' | head -1)" ]; then
+if [ -d "$REPO_DIR/overlay" ]; then
   echo "== Copying overlay files =="
-  (cd "$REPO_DIR/overlay" && find . -type f -not -name '.gitkeep' -print) | sed 's|^\./||'
-  rsync -a --exclude='.gitkeep' "$REPO_DIR/overlay/" "$SRC/"
+  (cd "$REPO_DIR/overlay" && find . -type f -not -name '.gitkeep' -print) | sed 's|^\./||' | while IFS= read -r f; do
+    echo "$f"
+    mkdir -p "$SRC/$(dirname "$f")"
+    cp "$REPO_DIR/overlay/$f" "$SRC/$f"
+  done
 fi
 
 # 2) Patches: applied in lexical order.
 shopt -s nullglob
 for p in "$REPO_DIR"/patches/*.patch; do
   echo "== Applying $(basename "$p") =="
-  git -C "$SRC" apply --whitespace=nowarn --verbose "$p"
+  git -C "$SRC" apply --whitespace=nowarn "$p"
 done
 echo "== apply.sh done =="
