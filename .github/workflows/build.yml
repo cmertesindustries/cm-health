@@ -1,0 +1,92 @@
+name: build-cm-health
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag (e.g. v2.0.0)'
+        required: true
+      prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: true
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fetch upstream source (pinned)
+        run: |
+          set -euo pipefail
+          REF="$(tr -d '[:space:]' < UPSTREAM_REF)"
+          git init src
+          git -C src remote add origin https://github.com/OpenStrap/edge.git
+          git -C src fetch --depth 1 origin "$REF"
+          git -C src checkout FETCH_HEAD
+          echo "Upstream at: $(git -C src rev-parse HEAD)"
+
+      - name: Apply CM Health overlay + patches
+        run: bash apply.sh "$GITHUB_WORKSPACE/src"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.6'
+
+      - name: Write .env (no telemetry, no companion backend)
+        run: |
+          printf 'COMPANION_URL=\nBACKEND_URL=\nENABLE_HEALTH_DATA_CONTRIBUTION=false\n' > src/.env
+
+      - name: Restore release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      - name: Pub get
+        run: flutter pub get
+        working-directory: src
+
+      - name: Build release APK (arm64)
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build apk --release --split-per-abi --target-platform android-arm64 --dart-define-from-file=.env
+        working-directory: src
+
+      - name: Name the APK
+        id: rename
+        run: |
+          mkdir -p dist
+          cp src/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/cm-health-${{ inputs.version }}-arm64.apk"
+          ls -la dist/
+          echo "apk=dist/cm-health-${{ inputs.version }}-arm64.apk" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cm-health-apk
+          path: ${{ steps.rename.outputs.apk }}
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          prerelease: ${{ inputs.prerelease }}
+          files: ${{ steps.rename.outputs.apk }}
+          generate_release_notes: false
