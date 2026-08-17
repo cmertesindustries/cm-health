@@ -48,11 +48,11 @@ Future<void> playBuzzCue(AppState app, BuzzCue cue) async {
       await pulse();
     case BuzzCue.short2:
       await pulse();
-      await Future<void>.delayed(const Duration(milliseconds: 450));
+      await Future<void>.delayed(const Duration(milliseconds: 900));
       await pulse();
     case BuzzCue.short3:
       for (var i = 0; i < 3; i++) {
-        if (i > 0) await Future<void>.delayed(const Duration(milliseconds: 450));
+        if (i > 0) await Future<void>.delayed(const Duration(milliseconds: 900));
         await pulse();
       }
     case BuzzCue.long:
