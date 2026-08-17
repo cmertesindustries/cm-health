@@ -170,6 +170,69 @@ index d831186..db4a705 100644
      }
      return id;
    }
+diff --git a/lib/ble/ble_engine.dart b/lib/ble/ble_engine.dart
+index a1303a8..4863451 100644
+--- a/lib/ble/ble_engine.dart
++++ b/lib/ble/ble_engine.dart
+@@ -3054,6 +3054,58 @@ class BleEngine {
+   /// verify drift and re-correlate the strap-RTC ↔ wall clock.
+   Future<void> getClock() => _send(Cmd.getClock, const <int>[]);
+ 
++  /// CM Health (v2.0.2): make the strap clock trustworthy RIGHT BEFORE arming
++  /// an alarm.
++  ///
++  /// Field evidence (17.08.2026 diagnose log): alarms were regularly armed
++  /// with `correlated=false` — no GET_CLOCK sample this session — so the raw
++  /// wall epoch went to a strap RTC that was minutes (once: 659 days!) off.
++  /// A fast strap clock makes a near-term alarm land in the strap's PAST at
++  /// arm time, where it latches (event 56!) but can never fire. The sync
++  /// engine's own drift policy only corrects >1 day — useless for alarms.
++  ///
++  /// This forces a FRESH correlation: GET_CLOCK, wait for the sample; if the
++  /// drift exceeds [maxDriftSec], SET_CLOCK (which re-reads + re-correlates)
++  /// and wait again. Returns the freshest known drift in seconds, or null if
++  /// no sample could be obtained (caller arms with the raw epoch, as before).
++  Future<int?> prepareClockForAlarm({
++    int maxDriftSec = 30,
++    Duration timeout = const Duration(seconds: 4),
++  }) async {
++    Future<ClockRef?> awaitFreshRef(ClockRef? before) async {
++      final deadline = DateTime.now().add(timeout);
++      while (DateTime.now().isBefore(deadline)) {
++        final ref = _clockRef;
++        if (ref != null && !identical(ref, before)) return ref;
++        await Future<void>.delayed(const Duration(milliseconds: 100));
++      }
++      return null;
++    }
++
++    try {
++      var before = _clockRef;
++      await getClock();
++      var ref = await awaitFreshRef(before);
++      if (ref == null) {
++        _log('[alarm] clock correlation: no GET_CLOCK sample within timeout — '
++            'arming with raw wall epoch.');
++        return _clockRef?.driftSec;
++      }
++      if (ref.driftSec.abs() > maxDriftSec) {
++        _log('[alarm] strap clock off by ${ref.driftSec}s (> ${maxDriftSec}s) '
++            '— issuing SET_CLOCK before arming.');
++        before = _clockRef;
++        await setClock(); // sets true time, then reads back → fresh _clockRef
++        ref = await awaitFreshRef(before) ?? ref;
++      }
++      _log('[alarm] clock ready for arming: drift=${ref.driftSec}s.');
++      return ref.driftSec;
++    } catch (e) {
++      _log('[alarm] prepareClockForAlarm failed: $e');
++      return _clockRef?.driftSec;
++    }
++  }
++
+   /// On-device wake alarm (SET_ALARM_TIME = 0x42) — the RICH 20-byte form that
+   /// actually FIRES on WHOOP 4.0:
+   /// ```
 diff --git a/lib/ble/proximity_policy.dart b/lib/ble/proximity_policy.dart
 index 9305188..5cdfae1 100644
 --- a/lib/ble/proximity_policy.dart
@@ -1551,7 +1614,7 @@ index 86060d3..5fcb704 100644
    );
  
 diff --git a/lib/state/app_state.dart b/lib/state/app_state.dart
-index dbca2b1..17f3aff 100644
+index dbca2b1..d05f96a 100644
 --- a/lib/state/app_state.dart
 +++ b/lib/state/app_state.dart
 @@ -1308,7 +1308,7 @@ class AppState extends ChangeNotifier {
@@ -1674,7 +1737,7 @@ index dbca2b1..17f3aff 100644
  
    /// The strap emitted ALARM_SET (event 56) — the alarm is confirmed armed.
    bool get alarmConfirmed => _alarm.confirmed;
-@@ -3027,7 +3033,7 @@ class AppState extends ChangeNotifier {
+@@ -3027,9 +3033,20 @@ class AppState extends ChangeNotifier {
    int? get alarmFiredAt => _alarm.firedAt;
  
    Future<void> setAlarm(DateTime when) async {
@@ -1682,8 +1745,21 @@ index dbca2b1..17f3aff 100644
 +    if (!isConnected) throw Exception('Verbinde zuerst dein Band');
      final epoch =
          when.millisecondsSinceEpoch ~/ 1000; // local wall-clock → unix
++    // CM Health (v2.0.2): a wake time that is already (nearly) NOW can land in
++    // the strap's past once its RTC offset is applied — reject it up front
++    // with a message instead of arming a wake that can never fire.
++    if (!when.isAfter(DateTime.now().add(const Duration(seconds: 20)))) {
++      throw Exception(
++          'Weckzeit liegt zu nah an jetzt — bitte mindestens eine Minute in der Zukunft wählen');
++    }
++    // CM Health (v2.0.2): force a FRESH strap-clock correlation (and repair
++    // the RTC if it is more than 30 s off) BEFORE arming — see
++    // engine.prepareClockForAlarm for the field evidence behind this.
++    await engine.prepareClockForAlarm();
      // Pass the DateTime through so the engine computes REAL sub-seconds for the
-@@ -3040,12 +3046,12 @@ class AppState extends ChangeNotifier {
+     // rich 20-byte firing form (a hardcoded 0 subsec would still fire, but the
+     // engine owns the exact on-wire layout).
+@@ -3040,12 +3057,12 @@ class AppState extends ChangeNotifier {
        // strap to confirm" that can never fire. Surface it so the UI reflects
        // "couldn't send" (the coach/profile callers snackbar on a throw).
        _log('[alarm] arm write FAILED — not persisting; alarm not set.');
@@ -1698,7 +1774,7 @@ index dbca2b1..17f3aff 100644
      final prefs = await SharedPreferences.getInstance();
      await prefs.setInt('alarm_epoch', epoch);
      // Nudge the UI once the grace window elapses so an unconfirmed alarm flips to
-@@ -3064,52 +3070,65 @@ class AppState extends ChangeNotifier {
+@@ -3064,52 +3081,68 @@ class AppState extends ChangeNotifier {
      );
    }
  
@@ -1729,6 +1805,9 @@ index dbca2b1..17f3aff 100644
 +    _alarmRetriesUsed++;
      var rearmed = false;
      try {
++      // CM Health (v2.0.2): the retry may run long after the original set
++      // (reconnects) — keep the strap-clock correlation fresh here as well.
++      await engine.prepareClockForAlarm();
        rearmed = await engine.setAlarm(when);
      } catch (e) {
        _log('[alarm] auto-retry re-arm failed: $e');
@@ -1775,7 +1854,7 @@ index dbca2b1..17f3aff 100644
      await engine.buzzPattern(pattern);
    }
  
-@@ -3131,7 +3150,7 @@ class AppState extends ChangeNotifier {
+@@ -3131,7 +3164,7 @@ class AppState extends ChangeNotifier {
    Future<int?> readBandRssi() => engine.readRssi();
  
    Future<void> disableAlarm() async {
@@ -1784,7 +1863,7 @@ index dbca2b1..17f3aff 100644
      await engine.disableAlarm();
      _savedAlarm = null;
      device.alarmEpoch = null;
-@@ -3199,14 +3218,36 @@ class AppState extends ChangeNotifier {
+@@ -3199,14 +3232,36 @@ class AppState extends ChangeNotifier {
      }());
    }
  
@@ -1823,7 +1902,7 @@ index dbca2b1..17f3aff 100644
          date: todayLabel(),
          route: '/today',
        ));
-@@ -3216,7 +3257,7 @@ class AppState extends ChangeNotifier {
+@@ -3216,7 +3271,7 @@ class AppState extends ChangeNotifier {
    }
  
    Future<void> renameStrap(String name) async {
@@ -1832,7 +1911,7 @@ index dbca2b1..17f3aff 100644
      await engine.setStrapName(name);
      device.strapName = name; // optimistic
      await engine.getStrapName();
-@@ -3760,7 +3801,7 @@ class AppState extends ChangeNotifier {
+@@ -3760,7 +3815,7 @@ class AppState extends ChangeNotifier {
    Future<void> startSpotCheck() async {
      if (spotActive) return;
      if (!isConnected) {
@@ -1841,7 +1920,7 @@ index dbca2b1..17f3aff 100644
        notifyListeners();
        return;
      }
-@@ -3822,12 +3863,12 @@ class AppState extends ChangeNotifier {
+@@ -3822,12 +3877,12 @@ class AppState extends ChangeNotifier {
            : await repo!.spotCheck(frames);
        spotResult = res;
        if (res == null) {
@@ -1857,7 +1936,7 @@ index dbca2b1..17f3aff 100644
      } finally {
        spotActive = false;
        notifyListeners();
-@@ -3893,7 +3934,7 @@ class AppState extends ChangeNotifier {
+@@ -3893,7 +3948,7 @@ class AppState extends ChangeNotifier {
    }) async {
      if (breathingActive) return;
      if (!isConnected) {
@@ -1866,7 +1945,7 @@ index dbca2b1..17f3aff 100644
        notifyListeners();
        return;
      }
-@@ -4568,7 +4609,7 @@ class AppState extends ChangeNotifier {
+@@ -4568,7 +4623,7 @@ class AppState extends ChangeNotifier {
        } catch (_) {
          /* fresh day / seam not implemented — start clean */
        }
