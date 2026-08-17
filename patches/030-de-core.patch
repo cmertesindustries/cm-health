@@ -171,10 +171,38 @@ index d831186..db4a705 100644
      return id;
    }
 diff --git a/lib/ble/ble_engine.dart b/lib/ble/ble_engine.dart
-index a1303a8..4863451 100644
+index a1303a8..c7d1256 100644
 --- a/lib/ble/ble_engine.dart
 +++ b/lib/ble/ble_engine.dart
-@@ -3054,6 +3054,58 @@ class BleEngine {
+@@ -1954,6 +1954,27 @@ class BleEngine {
+       final e = parseEvent(frame.inner);
+       if (e != null) {
+         _handleEventInfo(e);
++        // CM Health (v2.0.3): correlate the strap RTC from EVENT timestamps.
++        // GET_CLOCK responses are MISPARSED on this firmware (values advance
++        // at exactly 256x wall speed — a one-byte framing offset — and get
++        // rejected by the sanity gate), so the event stream is the only
++        // trustworthy read of the strap clock. Live events arrive steadily,
++        // so this correlation stays fresh for free. Guards: never during an
++        // offload (the flash backlog REPLAYS old events with old timestamps,
++        // which would poison the drift), and only sane epochs.
++        if (!_offloadActive) {
++          final ts = e.tsEpoch;
++          final wallNow = DateTime.now().millisecondsSinceEpoch ~/ 1000;
++          if (ts > 1750000000 && ts < wallNow + 86400) {
++            final prev = _clockRef;
++            _clockRef = ClockRef(device: ts, wall: wallNow);
++            final drift = wallNow - ts;
++            if (prev == null || (prev.driftSec - drift).abs() > 5) {
++              _log('[alarm] clock correlated from event stream: '
++                  'drift=${drift}s (event ts=$ts).');
++            }
++          }
++        }
+         onEvent?.call(e.eventId, e.tsEpoch, _innerHex(frame.inner));
+       }
+     } else if (pt == PacketType.consoleLogs && _offloadActive) {
+@@ -3054,6 +3075,62 @@ class BleEngine {
    /// verify drift and re-correlate the strap-RTC ↔ wall clock.
    Future<void> getClock() => _send(Cmd.getClock, const <int>[]);
  
@@ -196,39 +224,43 @@ index a1303a8..4863451 100644
 +    int maxDriftSec = 30,
 +    Duration timeout = const Duration(seconds: 4),
 +  }) async {
-+    Future<ClockRef?> awaitFreshRef(ClockRef? before) async {
++    // v2.0.3: the strap clock is correlated continuously from the EVENT
++    // stream (see the event branch in _onDecoded) — GET_CLOCK reads are
++    // unusable on this firmware, and SET_CLOCK is deliberately NOT issued
++    // here any more: pure frame-shifting in [setAlarm] handles ANY drift
++    // without touching the strap RTC. This just makes sure the correlation
++    // is reasonably fresh before arming.
++    try {
++      bool freshEnough(ClockRef? ref) {
++        if (ref == null) return false;
++        final age = DateTime.now().millisecondsSinceEpoch ~/ 1000 - ref.wall;
++        return age >= 0 && age < 180; // events tick ~every minute when worn
++      }
++
++      if (freshEnough(_clockRef)) {
++        _log('[alarm] clock ready (event-correlated): '
++            'drift=${_clockRef!.driftSec}s.');
++        return _clockRef!.driftSec;
++      }
++      // Nothing fresh — wait for the next live event to land.
 +      final deadline = DateTime.now().add(timeout);
 +      while (DateTime.now().isBefore(deadline)) {
-+        final ref = _clockRef;
-+        if (ref != null && !identical(ref, before)) return ref;
-+        await Future<void>.delayed(const Duration(milliseconds: 100));
++        if (freshEnough(_clockRef)) {
++          _log('[alarm] clock ready (event-correlated): '
++              'drift=${_clockRef!.driftSec}s.');
++          return _clockRef!.driftSec;
++        }
++        await Future<void>.delayed(const Duration(milliseconds: 200));
 +      }
-+      return null;
-+    }
-+
-+    try {
-+      var before = _clockRef;
-+      await getClock();
-+      var ref = await awaitFreshRef(before);
-+      if (ref == null) {
-+        _log('[alarm] clock correlation: no GET_CLOCK sample within timeout — '
-+            'arming with raw wall epoch.');
-+        return _clockRef?.driftSec;
-+      }
-+      if (ref.driftSec.abs() > maxDriftSec) {
-+        _log('[alarm] strap clock off by ${ref.driftSec}s (> ${maxDriftSec}s) '
-+            '— issuing SET_CLOCK before arming.');
-+        before = _clockRef;
-+        await setClock(); // sets true time, then reads back → fresh _clockRef
-+        ref = await awaitFreshRef(before) ?? ref;
-+      }
-+      _log('[alarm] clock ready for arming: drift=${ref.driftSec}s.');
-+      return ref.driftSec;
++      _log('[alarm] no fresh event correlation within timeout — arming with '
++          '${_clockRef == null ? 'raw wall epoch' : 'last known drift ${_clockRef!.driftSec}s'}.');
++      return _clockRef?.driftSec;
 +    } catch (e) {
 +      _log('[alarm] prepareClockForAlarm failed: $e');
 +      return _clockRef?.driftSec;
 +    }
 +  }
++
 +
    /// On-device wake alarm (SET_ALARM_TIME = 0x42) — the RICH 20-byte form that
    /// actually FIRES on WHOOP 4.0:
@@ -1614,7 +1646,7 @@ index 86060d3..5fcb704 100644
    );
  
 diff --git a/lib/state/app_state.dart b/lib/state/app_state.dart
-index dbca2b1..d05f96a 100644
+index dbca2b1..678ca02 100644
 --- a/lib/state/app_state.dart
 +++ b/lib/state/app_state.dart
 @@ -1308,7 +1308,7 @@ class AppState extends ChangeNotifier {
@@ -1718,7 +1750,7 @@ index dbca2b1..d05f96a 100644
            body: BatteryForecaster.describe(f, wakeAt: wakeAt),
            date: day,
            route: '/profile',
-@@ -3006,9 +3006,15 @@ class AppState extends ChangeNotifier {
+@@ -3006,9 +3006,21 @@ class AppState extends ChangeNotifier {
    // band DID latch the alarm), there is no retry/re-poll for it and the
    // GET_ALARM readback fallback is parked (unconfirmed format), so the app had
    // no way to ever clear the "unconfirmed" warning short of the user
@@ -1734,10 +1766,16 @@ index dbca2b1..d05f96a 100644
 +  // unreliable alarm is never a silent surprise the next morning.
 +  int _alarmRetriesUsed = 0;
 +  static const int _kAlarmMaxRetries = 6;
++
++  /// v2.0.3: the pre-arm DISABLE_ALARM (see [setAlarm]) provokes a strap
++  /// "cleared" event (59) that can arrive AFTER the fresh SET — without this
++  /// window it would wipe the just-armed state. Events inside the window are
++  /// self-inflicted and ignored.
++  int _expectSelfClearUntilMs = 0;
  
    /// The strap emitted ALARM_SET (event 56) — the alarm is confirmed armed.
    bool get alarmConfirmed => _alarm.confirmed;
-@@ -3027,9 +3033,20 @@ class AppState extends ChangeNotifier {
+@@ -3027,9 +3039,32 @@ class AppState extends ChangeNotifier {
    int? get alarmFiredAt => _alarm.firedAt;
  
    Future<void> setAlarm(DateTime when) async {
@@ -1752,14 +1790,26 @@ index dbca2b1..d05f96a 100644
 +      throw Exception(
 +          'Weckzeit liegt zu nah an jetzt — bitte mindestens eine Minute in der Zukunft wählen');
 +    }
-+    // CM Health (v2.0.2): force a FRESH strap-clock correlation (and repair
-+    // the RTC if it is more than 30 s off) BEFORE arming — see
++    // CM Health (v2.0.2/3): fresh strap-clock correlation BEFORE arming — see
 +    // engine.prepareClockForAlarm for the field evidence behind this.
 +    await engine.prepareClockForAlarm();
++    // CM Health (v2.0.3): field pattern (16./17.08.): after an alarm FIRES
++    // (events 57/58 + auto-clear 59), the NEXT armed alarm latches (event 56)
++    // but never fires — the firmware's alarm engine appears to need an
++    // explicit disarm before it accepts a new live alarm. Clear first, every
++    // time; a short settle keeps the two writes from racing on the chain.
++    try {
++      _expectSelfClearUntilMs =
++          DateTime.now().millisecondsSinceEpoch + 5000;
++      await engine.disableAlarm();
++      await Future<void>.delayed(const Duration(milliseconds: 300));
++    } catch (e) {
++      _log('[alarm] pre-arm disable failed (continuing): $e');
++    }
      // Pass the DateTime through so the engine computes REAL sub-seconds for the
      // rich 20-byte firing form (a hardcoded 0 subsec would still fire, but the
      // engine owns the exact on-wire layout).
-@@ -3040,12 +3057,12 @@ class AppState extends ChangeNotifier {
+@@ -3040,12 +3075,12 @@ class AppState extends ChangeNotifier {
        // strap to confirm" that can never fire. Surface it so the UI reflects
        // "couldn't send" (the coach/profile callers snackbar on a throw).
        _log('[alarm] arm write FAILED — not persisting; alarm not set.');
@@ -1774,7 +1824,7 @@ index dbca2b1..d05f96a 100644
      final prefs = await SharedPreferences.getInstance();
      await prefs.setInt('alarm_epoch', epoch);
      // Nudge the UI once the grace window elapses so an unconfirmed alarm flips to
-@@ -3064,52 +3081,68 @@ class AppState extends ChangeNotifier {
+@@ -3064,52 +3099,75 @@ class AppState extends ChangeNotifier {
      );
    }
  
@@ -1808,6 +1858,13 @@ index dbca2b1..d05f96a 100644
 +      // CM Health (v2.0.2): the retry may run long after the original set
 +      // (reconnects) — keep the strap-clock correlation fresh here as well.
 +      await engine.prepareClockForAlarm();
++      // v2.0.3: same disarm-first hygiene as the primary set (see setAlarm).
++      try {
++        _expectSelfClearUntilMs =
++            DateTime.now().millisecondsSinceEpoch + 5000;
++        await engine.disableAlarm();
++        await Future<void>.delayed(const Duration(milliseconds: 300));
++      } catch (_) {}
        rearmed = await engine.setAlarm(when);
      } catch (e) {
        _log('[alarm] auto-retry re-arm failed: $e');
@@ -1854,7 +1911,7 @@ index dbca2b1..d05f96a 100644
      await engine.buzzPattern(pattern);
    }
  
-@@ -3131,7 +3164,7 @@ class AppState extends ChangeNotifier {
+@@ -3131,7 +3189,7 @@ class AppState extends ChangeNotifier {
    Future<int?> readBandRssi() => engine.readRssi();
  
    Future<void> disableAlarm() async {
@@ -1863,7 +1920,21 @@ index dbca2b1..d05f96a 100644
      await engine.disableAlarm();
      _savedAlarm = null;
      device.alarmEpoch = null;
-@@ -3199,14 +3232,36 @@ class AppState extends ChangeNotifier {
+@@ -3151,6 +3209,13 @@ class AppState extends ChangeNotifier {
+   /// the protocol EventId names (strapDrivenAlarmSet == 56, …); the pure state
+   /// machine matches the raw ids so it stays dependency-free.
+   void _handleAlarmEvent(int id, int ts) {
++    // v2.0.3: swallow the self-inflicted clear from the pre-arm disable —
++    // it must not wipe the state of the alarm we are arming right now.
++    if (id == 59 &&
++        DateTime.now().millisecondsSinceEpoch < _expectSelfClearUntilMs) {
++      _log('[alarm] ignoring self-inflicted clear (event 59) during re-arm.');
++      return;
++    }
+     final effect = _alarm.onEvent(id, DateTime.now().millisecondsSinceEpoch);
+     if (effect == null) return;
+     switch (effect) {
+@@ -3199,14 +3264,36 @@ class AppState extends ChangeNotifier {
      }());
    }
  
@@ -1902,7 +1973,7 @@ index dbca2b1..d05f96a 100644
          date: todayLabel(),
          route: '/today',
        ));
-@@ -3216,7 +3271,7 @@ class AppState extends ChangeNotifier {
+@@ -3216,7 +3303,7 @@ class AppState extends ChangeNotifier {
    }
  
    Future<void> renameStrap(String name) async {
@@ -1911,7 +1982,7 @@ index dbca2b1..d05f96a 100644
      await engine.setStrapName(name);
      device.strapName = name; // optimistic
      await engine.getStrapName();
-@@ -3760,7 +3815,7 @@ class AppState extends ChangeNotifier {
+@@ -3760,7 +3847,7 @@ class AppState extends ChangeNotifier {
    Future<void> startSpotCheck() async {
      if (spotActive) return;
      if (!isConnected) {
@@ -1920,7 +1991,7 @@ index dbca2b1..d05f96a 100644
        notifyListeners();
        return;
      }
-@@ -3822,12 +3877,12 @@ class AppState extends ChangeNotifier {
+@@ -3822,12 +3909,12 @@ class AppState extends ChangeNotifier {
            : await repo!.spotCheck(frames);
        spotResult = res;
        if (res == null) {
@@ -1936,7 +2007,7 @@ index dbca2b1..d05f96a 100644
      } finally {
        spotActive = false;
        notifyListeners();
-@@ -3893,7 +3948,7 @@ class AppState extends ChangeNotifier {
+@@ -3893,7 +3980,7 @@ class AppState extends ChangeNotifier {
    }) async {
      if (breathingActive) return;
      if (!isConnected) {
@@ -1945,7 +2016,7 @@ index dbca2b1..d05f96a 100644
        notifyListeners();
        return;
      }
-@@ -4568,7 +4623,7 @@ class AppState extends ChangeNotifier {
+@@ -4568,7 +4655,7 @@ class AppState extends ChangeNotifier {
        } catch (_) {
          /* fresh day / seam not implemented — start clean */
        }
