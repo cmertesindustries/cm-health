@@ -108,7 +108,7 @@ index ac8285e..5d18d35 100644
        hour: m ~/ 60,
        minute: m % 60,
 diff --git a/lib/app.dart b/lib/app.dart
-index 9811034..669c092 100644
+index 9811034..166a390 100644
 --- a/lib/app.dart
 +++ b/lib/app.dart
 @@ -1,3 +1,4 @@
@@ -116,7 +116,18 @@ index 9811034..669c092 100644
  import 'dart:async';
  
  import 'package:flutter/material.dart';
-@@ -105,8 +106,13 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
+@@ -93,6 +94,10 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
+       // delivering whenever the OS feels like it is worse than one that is
+       // honest about when it fires.
+       unawaited(app.runBackupIfDue());
++      // CM Health (v2.0.1): re-pull the phone's pedometer counts on every
++      // foreground, so the steps tile stays current even when the band cannot
++      // sync (a dead band battery used to freeze the whole day's steps).
++      if (app.phoneStepsEnabled) unawaited(app.syncPhoneSteps());
+       if (app.isPaired) app.openSession();
+     } else if (state == AppLifecycleState.paused) {
+       // Backgrounded: hand the band to the iOS restore path so it can wake-and-drain
+@@ -105,8 +110,13 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
    Widget build(BuildContext context) {
      final theme = context.watch<ThemeController>();
      return MaterialApp(
@@ -131,7 +142,7 @@ index 9811034..669c092 100644
        theme: theme.lightTheme,
        darkTheme: theme.darkTheme,
        themeMode: theme.materialThemeMode,
-@@ -241,10 +247,10 @@ class _ShellState extends State<_Shell> {
+@@ -241,10 +251,10 @@ class _ShellState extends State<_Shell> {
  
    // Tab icons (see lib/ui/kit/os_icons.dart for the pack each one resolves to).
    static const _nav = [
@@ -1540,7 +1551,7 @@ index 86060d3..5fcb704 100644
    );
  
 diff --git a/lib/state/app_state.dart b/lib/state/app_state.dart
-index dbca2b1..50111c1 100644
+index dbca2b1..17f3aff 100644
 --- a/lib/state/app_state.dart
 +++ b/lib/state/app_state.dart
 @@ -1308,7 +1308,7 @@ class AppState extends ChangeNotifier {
@@ -1644,7 +1655,26 @@ index dbca2b1..50111c1 100644
            body: BatteryForecaster.describe(f, wakeAt: wakeAt),
            date: day,
            route: '/profile',
-@@ -3027,7 +3027,7 @@ class AppState extends ChangeNotifier {
+@@ -3006,9 +3006,15 @@ class AppState extends ChangeNotifier {
+   // band DID latch the alarm), there is no retry/re-poll for it and the
+   // GET_ALARM readback fallback is parked (unconfirmed format), so the app had
+   // no way to ever clear the "unconfirmed" warning short of the user
+-  // re-sending the whole alarm. One silent, automatic re-arm covers that
+-  // common case; only a still-unconfirmed retry falls through to the warning.
+-  bool _alarmAutoRetried = false;
++  // re-sending the whole alarm.
++  //
++  // CM Health (v2.0.1): ONE silent retry proved too little in the field — an
++  // alarm stayed "sent but unconfirmed" overnight and never fired. The re-arm
++  // now retries up to [_kAlarmMaxRetries] times (one grace window apart) and,
++  // if the band STILL never confirms, posts a warning notification so an
++  // unreliable alarm is never a silent surprise the next morning.
++  int _alarmRetriesUsed = 0;
++  static const int _kAlarmMaxRetries = 6;
+ 
+   /// The strap emitted ALARM_SET (event 56) — the alarm is confirmed armed.
+   bool get alarmConfirmed => _alarm.confirmed;
+@@ -3027,7 +3033,7 @@ class AppState extends ChangeNotifier {
    int? get alarmFiredAt => _alarm.firedAt;
  
    Future<void> setAlarm(DateTime when) async {
@@ -1653,7 +1683,7 @@ index dbca2b1..50111c1 100644
      final epoch =
          when.millisecondsSinceEpoch ~/ 1000; // local wall-clock → unix
      // Pass the DateTime through so the engine computes REAL sub-seconds for the
-@@ -3040,7 +3040,7 @@ class AppState extends ChangeNotifier {
+@@ -3040,12 +3046,12 @@ class AppState extends ChangeNotifier {
        // strap to confirm" that can never fire. Surface it so the UI reflects
        // "couldn't send" (the coach/profile callers snackbar on a throw).
        _log('[alarm] arm write FAILED — not persisting; alarm not set.');
@@ -1662,7 +1692,75 @@ index dbca2b1..50111c1 100644
      }
      _savedAlarm = epoch;
      device.alarmEpoch = epoch; // optimistic display
-@@ -3104,12 +3104,12 @@ class AppState extends ChangeNotifier {
+     _alarm.set(epoch, DateTime.now().millisecondsSinceEpoch); // await event 56
+-    _alarmAutoRetried = false; // fresh user-initiated set gets its one retry
++    _alarmRetriesUsed = 0; // fresh user-initiated set gets a fresh retry budget
+     final prefs = await SharedPreferences.getInstance();
+     await prefs.setInt('alarm_epoch', epoch);
+     // Nudge the UI once the grace window elapses so an unconfirmed alarm flips to
+@@ -3064,52 +3070,65 @@ class AppState extends ChangeNotifier {
+     );
+   }
+ 
+-  /// Grace window elapsed with no event 56. Before showing the soft warning,
+-  /// try ONE silent re-arm — if the strap really did latch it and only the
+-  /// confirmation notification was dropped, this re-send gives it a second
+-  /// chance to confirm without the user having to notice or do anything.
++  /// Grace window elapsed with no event 56. Silently re-arm and wait again,
++  /// up to [_kAlarmMaxRetries] times — if the strap really did latch it and
++  /// only the confirmation notification was dropped, a re-send gives it
++  /// another chance to confirm without the user having to notice or act.
++  /// A budget that runs dry with the alarm STILL unconfirmed escalates to a
++  /// warning notification (CM Health v2.0.1) — see the field doc above.
+   Future<void> _onAlarmGraceElapsed(DateTime when) async {
+     if (_disposed || _alarm.confirmed) return;
+     final epoch = when.millisecondsSinceEpoch ~/ 1000;
+     // A newer alarm was armed while this timer was pending — that set owns the
+     // confirmation machine now; retrying the stale time would clobber it.
+     if (_savedAlarm != epoch) return;
+-    if (_alarmAutoRetried || !isConnected) {
++    if (_alarmRetriesUsed >= _kAlarmMaxRetries || !isConnected) {
++      // Budget exhausted (or nothing to retry against): surface it loudly.
++      unawaited(_notifyAlarmUnconfirmed(when));
+       notifyListeners();
+       return;
+     }
+-    _alarmAutoRetried = true;
++    _alarmRetriesUsed++;
+     var rearmed = false;
+     try {
+       rearmed = await engine.setAlarm(when);
+     } catch (e) {
+       _log('[alarm] auto-retry re-arm failed: $e');
+     }
+-    // The write itself never landed, so the one retry was not actually spent —
+-    // give it back rather than latching this alarm out of any future retry.
+-    if (!rearmed) _alarmAutoRetried = false;
++    // The write itself never landed, so this retry was not actually spent —
++    // give it back rather than burning budget on a dead link.
++    if (!rearmed) _alarmRetriesUsed--;
+     // dispose() ran while the write was in flight — do NOT create a timer it
+     // no longer has any chance to cancel (it would keep poking a torn-down
+     // engine on every fire).
+     if (_disposed) return;
+     // Re-check staleness after the await for the same reason as above.
+     if (rearmed && _savedAlarm == epoch && !_alarm.confirmed) {
++      _log('[alarm] re-arm ${_alarmRetriesUsed}/$_kAlarmMaxRetries sent — '
++          'waiting for event 56');
+       _alarm.set(epoch, DateTime.now().millisecondsSinceEpoch);
+       _armAlarmGraceTimer(when);
+       return;
+     }
++    if (!rearmed && _savedAlarm == epoch && !_alarm.confirmed) {
++      // Link was down for this attempt — try again after another grace window
++      // instead of giving up outright (the band may reconnect any moment).
++      _armAlarmGraceTimer(when);
++      notifyListeners();
++      return;
++    }
+     notifyListeners();
+   }
+ 
    /// Fire the strap's alarm haptics immediately — a "test buzz" so the user can
    /// confirm the band actually fires before trusting the scheduled wake.
    Future<void> testAlarmBuzz() async {
@@ -1677,7 +1775,7 @@ index dbca2b1..50111c1 100644
      await engine.buzzPattern(pattern);
    }
  
-@@ -3131,7 +3131,7 @@ class AppState extends ChangeNotifier {
+@@ -3131,7 +3150,7 @@ class AppState extends ChangeNotifier {
    Future<int?> readBandRssi() => engine.readRssi();
  
    Future<void> disableAlarm() async {
@@ -1686,7 +1784,35 @@ index dbca2b1..50111c1 100644
      await engine.disableAlarm();
      _savedAlarm = null;
      device.alarmEpoch = null;
-@@ -3205,8 +3205,8 @@ class AppState extends ChangeNotifier {
+@@ -3199,14 +3218,36 @@ class AppState extends ChangeNotifier {
+     }());
+   }
+ 
++  /// The alarm never got its confirmation despite the retry budget — tell the
++  /// user NOW (evening) rather than letting the morning be the test.
++  Future<void> _notifyAlarmUnconfirmed(DateTime when) async {
++    try {
++      final hhmm = '${when.hour.toString().padLeft(2, '0')}:'
++          '${when.minute.toString().padLeft(2, '0')}';
++      await NotificationCenter.instance.emit(NotificationEvent(
++        dedupeKey: 'alarm_unconfirmed:${when.millisecondsSinceEpoch ~/ 1000}',
++        category: NotifCategory.reminders,
++        priority: NotifPriority.critical,
++        title: 'Wecker unbestätigt',
++        body: 'Dein Band hat den Wecker für $hhmm nicht bestätigt — er könnte '
++            'ausfallen. Öffne die App und stelle ihn neu (oder nutze zur '
++            'Sicherheit den Handy-Wecker).',
++        date: todayLabel(),
++        route: '/today',
++      ));
++    } catch (e) {
++      _log('[alarm] unconfirmed-notification skipped: $e');
++    }
++  }
++
+   Future<void> _notifyAlarmFired() async {
+     try {
+       await NotificationCenter.instance.emit(NotificationEvent(
          dedupeKey: 'alarm_fired:${_alarm.firedAt ?? 0}',
          category: NotifCategory.reminders,
          priority: NotifPriority.critical,
@@ -1697,7 +1823,7 @@ index dbca2b1..50111c1 100644
          date: todayLabel(),
          route: '/today',
        ));
-@@ -3216,7 +3216,7 @@ class AppState extends ChangeNotifier {
+@@ -3216,7 +3257,7 @@ class AppState extends ChangeNotifier {
    }
  
    Future<void> renameStrap(String name) async {
@@ -1706,7 +1832,7 @@ index dbca2b1..50111c1 100644
      await engine.setStrapName(name);
      device.strapName = name; // optimistic
      await engine.getStrapName();
-@@ -3760,7 +3760,7 @@ class AppState extends ChangeNotifier {
+@@ -3760,7 +3801,7 @@ class AppState extends ChangeNotifier {
    Future<void> startSpotCheck() async {
      if (spotActive) return;
      if (!isConnected) {
@@ -1715,7 +1841,7 @@ index dbca2b1..50111c1 100644
        notifyListeners();
        return;
      }
-@@ -3822,12 +3822,12 @@ class AppState extends ChangeNotifier {
+@@ -3822,12 +3863,12 @@ class AppState extends ChangeNotifier {
            : await repo!.spotCheck(frames);
        spotResult = res;
        if (res == null) {
@@ -1731,7 +1857,7 @@ index dbca2b1..50111c1 100644
      } finally {
        spotActive = false;
        notifyListeners();
-@@ -3893,7 +3893,7 @@ class AppState extends ChangeNotifier {
+@@ -3893,7 +3934,7 @@ class AppState extends ChangeNotifier {
    }) async {
      if (breathingActive) return;
      if (!isConnected) {
@@ -1740,7 +1866,7 @@ index dbca2b1..50111c1 100644
        notifyListeners();
        return;
      }
-@@ -4568,7 +4568,7 @@ class AppState extends ChangeNotifier {
+@@ -4568,7 +4609,7 @@ class AppState extends ChangeNotifier {
        } catch (_) {
          /* fresh day / seam not implemented — start clean */
        }

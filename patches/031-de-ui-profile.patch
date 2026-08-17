@@ -745,10 +745,18 @@ index c2b4e3e..3aa6dde 100644
                    onChanged: (v) =>
                        _update(_p.copyWith(criticalOverridesQuiet: v)),
 diff --git a/lib/ui/profile/profile_screen.dart b/lib/ui/profile/profile_screen.dart
-index b828f88..ba542a5 100644
+index b828f88..ce8ef44 100644
 --- a/lib/ui/profile/profile_screen.dart
 +++ b/lib/ui/profile/profile_screen.dart
-@@ -55,15 +55,16 @@ Future<void> _backupSheet(BuildContext ctx, AppState app) async {
+@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+ import 'package:provider/provider.dart';
+ import 'package:share_plus/share_plus.dart';
++import 'diagnose_export.dart';
+ import 'package:url_launcher/url_launcher.dart';
+ 
+ import '../../data/db.dart';
+@@ -55,15 +56,16 @@ Future<void> _backupSheet(BuildContext ctx, AppState app) async {
            mainAxisSize: MainAxisSize.min,
            crossAxisAlignment: CrossAxisAlignment.start,
            children: [
@@ -772,7 +780,7 @@ index b828f88..ba542a5 100644
                style: AppText.bodySoft.copyWith(color: AppColors.inkSoft),
              ),
              const SizedBox(height: Sp.x4),
-@@ -92,8 +93,8 @@ Future<void> _backupSheet(BuildContext ctx, AppState app) async {
+@@ -92,8 +94,8 @@ Future<void> _backupSheet(BuildContext ctx, AppState app) async {
      SnackBar(
        content: Text(
          chosen == BackupCadence.off
@@ -783,7 +791,7 @@ index b828f88..ba542a5 100644
        ),
      ),
    );
-@@ -112,7 +113,7 @@ Future<void> _importHealthProfile(BuildContext ctx, AppState app) async {
+@@ -112,7 +114,7 @@ Future<void> _importHealthProfile(BuildContext ctx, AppState app) async {
    if (!await importer.requestPermission()) {
      if (!ctx.mounted) return;
      messenger.showSnackBar(
@@ -792,7 +800,7 @@ index b828f88..ba542a5 100644
      );
      return;
    }
-@@ -120,21 +121,21 @@ Future<void> _importHealthProfile(BuildContext ctx, AppState app) async {
+@@ -120,21 +122,21 @@ Future<void> _importHealthProfile(BuildContext ctx, AppState app) async {
    if (!ctx.mounted) return;
    if (snap.isEmpty) {
      messenger.showSnackBar(
@@ -817,7 +825,7 @@ index b828f88..ba542a5 100644
    );
  }
  
-@@ -187,7 +188,7 @@ class ProfileScreen extends StatelessWidget {
+@@ -187,7 +189,7 @@ class ProfileScreen extends StatelessWidget {
  
      return AppScaffold(
        titleWidget: Text(
@@ -826,7 +834,7 @@ index b828f88..ba542a5 100644
          style: AppText.h1,
          maxLines: 1,
          overflow: TextOverflow.ellipsis,
-@@ -198,7 +199,7 @@ class ProfileScreen extends StatelessWidget {
+@@ -198,7 +200,7 @@ class ProfileScreen extends StatelessWidget {
        ],
        children: [
            // ── Your device ──────────────────────────────────────────────
@@ -835,7 +843,7 @@ index b828f88..ba542a5 100644
            _deviceTile(context, app),
            // Android: battery-optimization (Doze) exemption — without it the OS
            // can freeze the background BLE session between events overnight.
-@@ -215,67 +216,67 @@ class ProfileScreen extends StatelessWidget {
+@@ -215,67 +217,67 @@ class ProfileScreen extends StatelessWidget {
            const SizedBox(height: Sp.x6),
  
            // ── Profile ──────────────────────────────────────────────────
@@ -920,7 +928,7 @@ index b828f88..ba542a5 100644
                onTap: () => Navigator.of(context).push(
                  themedRoute(
                    (_) => StepGoalScreen(
-@@ -290,12 +291,12 @@ class ProfileScreen extends StatelessWidget {
+@@ -290,12 +292,12 @@ class ProfileScreen extends StatelessWidget {
            const SizedBox(height: Sp.x6),
  
            // ── Data ─────────────────────────────────────────────────────
@@ -936,7 +944,7 @@ index b828f88..ba542a5 100644
                divider: true,
                onTap: () => Navigator.of(
                  context,
-@@ -303,21 +304,21 @@ class ProfileScreen extends StatelessWidget {
+@@ -303,21 +305,21 @@ class ProfileScreen extends StatelessWidget {
              ),
              ListRow(
                icon: OsIcon.sync,
@@ -963,7 +971,7 @@ index b828f88..ba542a5 100644
                divider: true,
                onTap: () async {
                  if (app.reanalyzing) return;
-@@ -327,8 +328,8 @@ class ProfileScreen extends StatelessWidget {
+@@ -327,8 +329,8 @@ class ProfileScreen extends StatelessWidget {
                    SnackBar(
                      content: Text(
                        n > 0
@@ -974,7 +982,7 @@ index b828f88..ba542a5 100644
                      ),
                    ),
                  );
-@@ -340,8 +341,8 @@ class ProfileScreen extends StatelessWidget {
+@@ -340,8 +342,8 @@ class ProfileScreen extends StatelessWidget {
              Builder(
                builder: (rowCtx) => ListRow(
                  icon: OsIcon.server,
@@ -985,7 +993,7 @@ index b828f88..ba542a5 100644
                  onTap: () async {
                    final messenger = ScaffoldMessenger.of(rowCtx);
                    final origin = shareOriginFor(rowCtx);
-@@ -352,12 +353,12 @@ class ProfileScreen extends StatelessWidget {
+@@ -352,22 +354,44 @@ class ProfileScreen extends StatelessWidget {
                      if (!rowCtx.mounted) return;
                      await Share.shareXFiles(
                        [XFile(path)],
@@ -1000,7 +1008,31 @@ index b828f88..ba542a5 100644
                      );
                    }
                  },
-@@ -367,7 +368,7 @@ class ProfileScreen extends StatelessWidget {
+                 divider: true,
+               ),
+             ),
++            // CM Health (v2.0.1): one-tap diagnose report — app state + logs
++            // straight into the share sheet, for remote debugging.
++            Builder(
++              builder: (rowCtx) => ListRow(
++                icon: OsIcon.info,
++                title: 'Diagnose exportieren',
++                value: 'Teilen',
++                divider: true,
++                onTap: () async {
++                  final messenger = ScaffoldMessenger.of(rowCtx);
++                  final origin = shareOriginFor(rowCtx);
++                  try {
++                    await shareDiagnoseReport(rowCtx, app,
++                        sharePositionOrigin: origin);
++                  } catch (e) {
++                    messenger.showSnackBar(
++                      SnackBar(content: Text('Diagnose fehlgeschlagen: $e')),
++                    );
++                  }
++                },
++              ),
++            ),
              Builder(
                builder: (rowCtx) => ListRow(
                  icon: OsIcon.history,
@@ -1009,7 +1041,7 @@ index b828f88..ba542a5 100644
                  value: app.backupCadence.label,
                  divider: true,
                  onTap: () => _backupSheet(rowCtx, app),
-@@ -377,8 +378,8 @@ class ProfileScreen extends StatelessWidget {
+@@ -377,8 +401,8 @@ class ProfileScreen extends StatelessWidget {
              // record you consult, not a number that changes overnight.
              ListRow(
                icon: OsIcon.ecgRhythm,
@@ -1020,7 +1052,7 @@ index b828f88..ba542a5 100644
                divider: true,
                onTap: () => Navigator.of(context).push(
                  themedRoute((_) => const LabsScreen(), name: 'LabsScreen'),
-@@ -390,8 +391,8 @@ class ProfileScreen extends StatelessWidget {
+@@ -390,8 +414,8 @@ class ProfileScreen extends StatelessWidget {
              Builder(
                builder: (rowCtx) => ListRow(
                  icon: OsIcon.share,
@@ -1031,7 +1063,7 @@ index b828f88..ba542a5 100644
                  onTap: () async {
                    // A second export while the first share sheet is still open
                    // would start cleaning up run directories underneath it. The
-@@ -410,8 +411,8 @@ class ProfileScreen extends StatelessWidget {
+@@ -410,8 +434,8 @@ class ProfileScreen extends StatelessWidget {
                          SnackBar(
                            content: Text(
                              result.hasFailures
@@ -1042,7 +1074,7 @@ index b828f88..ba542a5 100644
                            ),
                          ),
                        );
-@@ -421,20 +422,20 @@ class ProfileScreen extends StatelessWidget {
+@@ -421,20 +445,20 @@ class ProfileScreen extends StatelessWidget {
                        messenger.showSnackBar(
                          SnackBar(
                            content: Text(
@@ -1066,7 +1098,7 @@ index b828f88..ba542a5 100644
                      );
                    } finally {
                      _csvExportInFlight = false;
-@@ -446,8 +447,8 @@ class ProfileScreen extends StatelessWidget {
+@@ -446,8 +470,8 @@ class ProfileScreen extends StatelessWidget {
              // Per-day data manager (browse, export, delete stored days).
              ListRow(
                icon: OsIcon.history,
@@ -1077,7 +1109,7 @@ index b828f88..ba542a5 100644
                divider: advancedDebugMode,
                onTap: () => Navigator.of(
                  context,
-@@ -458,8 +459,8 @@ class ProfileScreen extends StatelessWidget {
+@@ -458,8 +482,8 @@ class ProfileScreen extends StatelessWidget {
              if (advancedDebugMode)
                ListRow(
                  icon: OsIcon.settings,
@@ -1088,7 +1120,7 @@ index b828f88..ba542a5 100644
                  onTap: () => Navigator.of(
                    context,
                  ).push(themedRoute((_) => const AdvancedDataScreen(),
-@@ -476,7 +477,7 @@ class ProfileScreen extends StatelessWidget {
+@@ -476,7 +500,7 @@ class ProfileScreen extends StatelessWidget {
            const SizedBox(height: Sp.x6),
  
            // ── Units (local display preference) ─────────────────────────
@@ -1097,7 +1129,7 @@ index b828f88..ba542a5 100644
            SurfaceCard(
              padding: const EdgeInsets.all(Sp.x4),
              child: Column(
-@@ -504,14 +505,15 @@ class ProfileScreen extends StatelessWidget {
+@@ -504,14 +528,15 @@ class ProfileScreen extends StatelessWidget {
            const SizedBox(height: Sp.x6),
  
            // ── Cycle tracking (explicit opt-in) ─────────────────────────
@@ -1117,7 +1149,7 @@ index b828f88..ba542a5 100644
              value: user['track_cycle'] == true || user['track_cycle'] == 1,
              onChanged: (v) async {
                try {
-@@ -523,13 +525,13 @@ class ProfileScreen extends StatelessWidget {
+@@ -523,13 +548,13 @@ class ProfileScreen extends StatelessWidget {
            const SizedBox(height: Sp.x6),
  
            // ── Privacy (opt-in companion data — also offered at onboarding) ──
@@ -1135,7 +1167,7 @@ index b828f88..ba542a5 100644
              value: app.telemetryConsent,
              onChanged: (v) => app.setTelemetryConsent(v),
            ),
-@@ -542,11 +544,11 @@ class ProfileScreen extends StatelessWidget {
+@@ -542,11 +567,11 @@ class ProfileScreen extends StatelessWidget {
              const SizedBox(height: Sp.x3),
              _ToggleCard(
                icon: OsIcon.activity,
@@ -1151,7 +1183,7 @@ index b828f88..ba542a5 100644
                value: app.healthShareConsent,
                onChanged: (v) => app.setHealthShareConsent(v),
              ),
-@@ -555,13 +557,13 @@ class ProfileScreen extends StatelessWidget {
+@@ -555,13 +580,13 @@ class ProfileScreen extends StatelessWidget {
            const SizedBox(height: Sp.x6),
  
            // ── Appearance ───────────────────────────────────────────────
@@ -1167,7 +1199,7 @@ index b828f88..ba542a5 100644
            const GestureSettingsCard(),
  
            const SizedBox(height: Sp.x6),
-@@ -570,7 +572,7 @@ class ProfileScreen extends StatelessWidget {
+@@ -570,7 +595,7 @@ class ProfileScreen extends StatelessWidget {
            // Android-only: TaskerReceiver + the broadcast_to_tasker capability
            // have no iOS counterpart (same convention as _KeepAliveRow above).
            if (Platform.isAndroid) ...[
@@ -1176,7 +1208,7 @@ index b828f88..ba542a5 100644
              _SettingsCard(rows: [
                GestureDetector(
                  onLongPress: () async {
-@@ -578,12 +580,12 @@ class ProfileScreen extends StatelessWidget {
+@@ -578,12 +603,12 @@ class ProfileScreen extends StatelessWidget {
                      const ClipboardData(text: 'wtf.openstrap.openstrap_edge.BUZZ_STRAP'),
                    );
                    if (context.mounted) {
@@ -1191,7 +1223,7 @@ index b828f88..ba542a5 100644
                    subtitle: 'wtf.openstrap.openstrap_edge.BUZZ_STRAP',
                    divider: true,
                    onTap: null,
-@@ -592,12 +594,13 @@ class ProfileScreen extends StatelessWidget {
+@@ -592,12 +617,13 @@ class ProfileScreen extends StatelessWidget {
                const _TaskerTokenRow(),
              ]),
              const _CardNote(
@@ -1211,7 +1243,7 @@ index b828f88..ba542a5 100644
              ),
              const SizedBox(height: Sp.x3),
              _SettingsCard(rows: [
-@@ -607,31 +610,32 @@ class ProfileScreen extends StatelessWidget {
+@@ -607,31 +633,32 @@ class ProfileScreen extends StatelessWidget {
                      const ClipboardData(text: 'wtf.openstrap.openstrap_edge.DOUBLE_TAP'),
                    );
                    if (context.mounted) {
@@ -1251,7 +1283,7 @@ index b828f88..ba542a5 100644
                onTap: () => Navigator.of(
                  context,
                ).push(themedRoute((_) => const NotificationSettingsScreen(),
-@@ -649,21 +653,21 @@ class ProfileScreen extends StatelessWidget {
+@@ -649,21 +676,21 @@ class ProfileScreen extends StatelessWidget {
            // Two distinct AI surfaces get their own row here — previously the
            // agentic AI Coach chat was reachable ONLY via a small pill button
            // on the Body screen, with nothing under Profile pointing at it.
@@ -1280,7 +1312,7 @@ index b828f88..ba542a5 100644
                onTap: () => Navigator.of(context).push(themedRoute(
                    (_) => const AiCoachScreen(), name: 'AiCoachScreen')),
              ),
-@@ -706,17 +710,17 @@ class ProfileScreen extends StatelessWidget {
+@@ -706,17 +733,17 @@ class ProfileScreen extends StatelessWidget {
              ),
            ),
            const _CardNote(
@@ -1302,7 +1334,7 @@ index b828f88..ba542a5 100644
                onTap: () => Navigator.of(context).push(
                    themedRoute((_) => const AboutScreen(), name: 'AboutScreen')),
              ),
-@@ -725,12 +729,12 @@ class ProfileScreen extends StatelessWidget {
+@@ -725,12 +752,12 @@ class ProfileScreen extends StatelessWidget {
            const SizedBox(height: Sp.x6),
  
            // ── Reset ────────────────────────────────────────────────────
@@ -1317,7 +1349,7 @@ index b828f88..ba542a5 100644
                onTap: () => _confirmSignOut(context, app),
              ),
            ]),
-@@ -738,12 +742,12 @@ class ProfileScreen extends StatelessWidget {
+@@ -738,12 +765,12 @@ class ProfileScreen extends StatelessWidget {
            const SizedBox(height: Sp.x6),
  
            // ── Developer ────────────────────────────────────────────────
@@ -1333,7 +1365,7 @@ index b828f88..ba542a5 100644
                onTap: () => Navigator.of(context).push(themedRoute(
                    (_) => const DesignGalleryScreen(),
                    name: 'DesignGalleryScreen')),
-@@ -763,7 +767,7 @@ class ProfileScreen extends StatelessWidget {
+@@ -763,7 +790,7 @@ class ProfileScreen extends StatelessWidget {
            children: [
              AppIcon(OsIcon.wear, size: 22, color: AppColors.inkMuted),
              const SizedBox(width: Sp.x3),
@@ -1342,7 +1374,7 @@ index b828f88..ba542a5 100644
            ],
          ),
        );
-@@ -774,19 +778,21 @@ class ProfileScreen extends StatelessWidget {
+@@ -774,19 +801,21 @@ class ProfileScreen extends StatelessWidget {
      final (statusTone, statusText) = switch (conn) {
        // Single listening mode — no separate "syncing" state; history + live
        // records both stream over the one link.
@@ -1369,7 +1401,7 @@ index b828f88..ba542a5 100644
        serial: d.serial ?? app.paired?.serial ?? '—',
        // Manual pull: anything the strap flashed that we don't hold yet, over
        // the CURRENT connection (no reconnect). Only offered while connected.
-@@ -808,8 +814,13 @@ class ProfileScreen extends StatelessWidget {
+@@ -808,8 +837,13 @@ class ProfileScreen extends StatelessWidget {
    }
  
    static String _sexLabel(String? s) {
@@ -1385,7 +1417,7 @@ index b828f88..ba542a5 100644
    }
  
    /// Compact host for the row value (drop scheme + trailing path).
-@@ -834,15 +845,15 @@ class ProfileScreen extends StatelessWidget {
+@@ -834,15 +868,15 @@ class ProfileScreen extends StatelessWidget {
          shape: RoundedRectangleBorder(
            borderRadius: BorderRadius.circular(R.card),
          ),
@@ -1405,7 +1437,7 @@ index b828f88..ba542a5 100644
                style: AppText.captionMuted,
              ),
              const SizedBox(height: Sp.x3),
-@@ -860,11 +871,11 @@ class ProfileScreen extends StatelessWidget {
+@@ -860,11 +894,11 @@ class ProfileScreen extends StatelessWidget {
          actions: [
            TextButton(
              onPressed: () => Navigator.of(dctx).pop(),
@@ -1419,7 +1451,7 @@ index b828f88..ba542a5 100644
            ),
          ],
        ),
-@@ -875,8 +886,8 @@ class ProfileScreen extends StatelessWidget {
+@@ -875,8 +909,8 @@ class ProfileScreen extends StatelessWidget {
        SnackBar(
          content: Text(
            url.isEmpty
@@ -1430,7 +1462,7 @@ index b828f88..ba542a5 100644
          ),
        ),
      );
-@@ -899,11 +910,11 @@ class ProfileScreen extends StatelessWidget {
+@@ -899,11 +933,11 @@ class ProfileScreen extends StatelessWidget {
    Future<void> _confirmSignOut(BuildContext context, AppState app) async {
      final ok = await _confirm(
        context,
@@ -1446,7 +1478,7 @@ index b828f88..ba542a5 100644
        destructive: true,
      );
      if (ok == true) await app.signOut();
-@@ -964,13 +975,13 @@ class _TaskerTokenRowState extends State<_TaskerTokenRow> {
+@@ -964,13 +998,13 @@ class _TaskerTokenRowState extends State<_TaskerTokenRow> {
            : () async {
                await Clipboard.setData(ClipboardData(text: token));
                if (context.mounted) {
@@ -1463,7 +1495,7 @@ index b828f88..ba542a5 100644
        ),
      );
    }
-@@ -1124,10 +1135,10 @@ class _DeviceTileState extends State<DeviceTile> {
+@@ -1124,10 +1158,10 @@ class _DeviceTileState extends State<DeviceTile> {
              Row(
                children: [
                  Expanded(
@@ -1476,7 +1508,7 @@ index b828f88..ba542a5 100644
                  ),
                ],
              ),
-@@ -1135,7 +1146,7 @@ class _DeviceTileState extends State<DeviceTile> {
+@@ -1135,7 +1169,7 @@ class _DeviceTileState extends State<DeviceTile> {
              Row(
                children: [
                  Expanded(
@@ -1485,7 +1517,7 @@ index b828f88..ba542a5 100644
                  ),
                  if (widget.onSyncNow != null)
                    Pressable(
-@@ -1165,7 +1176,7 @@ class _DeviceTileState extends State<DeviceTile> {
+@@ -1165,7 +1199,7 @@ class _DeviceTileState extends State<DeviceTile> {
                              const SizedBox(width: Sp.x2),
                            ],
                            Text(
@@ -1494,7 +1526,7 @@ index b828f88..ba542a5 100644
                              style: AppText.caption.copyWith(color: tone.fg),
                            ),
                          ],
-@@ -1229,7 +1240,7 @@ Future<bool?> _confirm(
+@@ -1229,7 +1263,7 @@ Future<bool?> _confirm(
        actions: [
          TextButton(
            onPressed: () => Navigator.pop(c, false),
@@ -1503,7 +1535,7 @@ index b828f88..ba542a5 100644
          ),
          FilledButton(
            style: destructive
-@@ -1273,10 +1284,10 @@ class _HealthSection extends StatelessWidget {
+@@ -1273,10 +1307,10 @@ class _HealthSection extends StatelessWidget {
                  child: Column(
                    crossAxisAlignment: CrossAxisAlignment.start,
                    children: [
@@ -1516,7 +1548,7 @@ index b828f88..ba542a5 100644
                        style: AppText.captionMuted,
                      ),
                    ],
-@@ -1317,12 +1328,12 @@ class _HealthSection extends StatelessWidget {
+@@ -1317,12 +1351,12 @@ class _HealthSection extends StatelessWidget {
            child: Column(
              crossAxisAlignment: CrossAxisAlignment.start,
              children: [
@@ -1533,7 +1565,7 @@ index b828f88..ba542a5 100644
                  style: AppText.captionMuted,
                ),
                // The failure mode this exists for: on iOS the permission prompt
-@@ -1350,7 +1361,7 @@ class _HealthSection extends StatelessWidget {
+@@ -1350,7 +1384,7 @@ class _HealthSection extends StatelessWidget {
              final ok = await app.requestPhoneSteps();
              if (!ok && context.mounted) {
                ScaffoldMessenger.of(context).showSnackBar(
@@ -1542,7 +1574,7 @@ index b828f88..ba542a5 100644
                );
              }
            },
-@@ -1362,18 +1373,20 @@ class _HealthSection extends StatelessWidget {
+@@ -1362,18 +1396,20 @@ class _HealthSection extends StatelessWidget {
    /// One line telling the user whether the read is actually producing anything.
    static String _phoneStepsStatus(AppState app, String store) {
      final days = app.phoneStepsLastSyncedDays;
@@ -1570,7 +1602,7 @@ index b828f88..ba542a5 100644
    }
  
    Widget _statusRow(BuildContext context, HealthLinkState st, String store) {
-@@ -1381,21 +1394,21 @@ class _HealthSection extends StatelessWidget {
+@@ -1381,21 +1417,21 @@ class _HealthSection extends StatelessWidget {
      // Health Connect must be installed/updated first (Android).
      if (st == HealthLinkState.notInstalled) {
        return _cta(
@@ -1597,7 +1629,7 @@ index b828f88..ba542a5 100644
          style: AppText.captionMuted,
        );
      }
-@@ -1404,10 +1417,12 @@ class _HealthSection extends StatelessWidget {
+@@ -1404,10 +1440,12 @@ class _HealthSection extends StatelessWidget {
      // hides it), so we just keep writing and tell the user how to allow access
      // if data isn't showing — never a stuck "Grant access" gate.
      final subtitle = app.healthIsApple
@@ -1614,7 +1646,7 @@ index b828f88..ba542a5 100644
      return Column(
        crossAxisAlignment: CrossAxisAlignment.start,
        children: [
-@@ -1416,7 +1431,8 @@ class _HealthSection extends StatelessWidget {
+@@ -1416,7 +1454,8 @@ class _HealthSection extends StatelessWidget {
              AppIcon(OsIcon.check, size: 16, color: AppColors.positive),
              const SizedBox(width: Sp.x2),
              Expanded(
@@ -1624,7 +1656,7 @@ index b828f88..ba542a5 100644
              ),
            ],
          ),
-@@ -1435,7 +1451,7 @@ class _HealthSection extends StatelessWidget {
+@@ -1435,7 +1474,7 @@ class _HealthSection extends StatelessWidget {
                  visualDensity: VisualDensity.compact,
                  minimumSize: const Size(0, 40),
                ),
@@ -1633,7 +1665,7 @@ index b828f88..ba542a5 100644
              ),
              if (!app.healthIsApple)
                OutlinedButton(
-@@ -1444,7 +1460,7 @@ class _HealthSection extends StatelessWidget {
+@@ -1444,7 +1483,7 @@ class _HealthSection extends StatelessWidget {
                    visualDensity: VisualDensity.compact,
                    minimumSize: const Size(0, 40),
                  ),
@@ -1642,7 +1674,7 @@ index b828f88..ba542a5 100644
                ),
              TextButton(
                onPressed: () async {
-@@ -1453,13 +1469,13 @@ class _HealthSection extends StatelessWidget {
+@@ -1453,13 +1492,13 @@ class _HealthSection extends StatelessWidget {
                    SnackBar(
                      content: Text(
                        n > 0
@@ -1659,7 +1691,7 @@ index b828f88..ba542a5 100644
              ),
            ],
          ),
-@@ -1528,9 +1544,9 @@ class _KeepAliveRowState extends State<_KeepAliveRow> {
+@@ -1528,9 +1567,9 @@ class _KeepAliveRowState extends State<_KeepAliveRow> {
          _SettingsCard(rows: [
            ListRow(
              icon: OsIcon.battery,
@@ -1672,7 +1704,7 @@ index b828f88..ba542a5 100644
              trailing: _exempt == true
                  ? AppIcon(OsIcon.check, size: 18, color: AppColors.positive)
                  : null,
-@@ -1548,9 +1564,10 @@ class _KeepAliveRowState extends State<_KeepAliveRow> {
+@@ -1548,9 +1587,10 @@ class _KeepAliveRowState extends State<_KeepAliveRow> {
            if (_showOemRow)
              ListRow(
                icon: OsIcon.battery,
@@ -1686,7 +1718,7 @@ index b828f88..ba542a5 100644
                onTap: () => context.read<AppState>().openOemAutostartSettings(),
              ),
          ]),
-@@ -1579,22 +1596,22 @@ class _ForceQuitInfoRow extends StatelessWidget {
+@@ -1579,22 +1619,22 @@ class _ForceQuitInfoRow extends StatelessWidget {
          _SettingsCard(rows: [
            ListRow(
              icon: OsIcon.battery,
@@ -1722,7 +1754,7 @@ index b828f88..ba542a5 100644
                ],
              ),
            ),
-@@ -1624,21 +1641,21 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1624,21 +1664,21 @@ class _DeviceSheet extends StatelessWidget {
      final alarm = live.alarmEpoch;
  
      return _SheetShell(
@@ -1750,7 +1782,7 @@ index b828f88..ba542a5 100644
            divider: true,
            onTap: connected
                ? () {
-@@ -1653,8 +1670,8 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1653,8 +1693,8 @@ class _DeviceSheet extends StatelessWidget {
          ),
          ListRow(
            icon: OsIcon.alarm,
@@ -1761,7 +1793,7 @@ index b828f88..ba542a5 100644
            onTap: connected ? () => _setAlarm(context, live) : null,
          ),
          // ALARM STATUS: the rich firing form (haptic waveform) is wired, and the
-@@ -1677,13 +1694,13 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1677,13 +1717,13 @@ class _DeviceSheet extends StatelessWidget {
                  onPressed: () async {
                    try {
                      await live.testAlarmBuzz();
@@ -1778,7 +1810,7 @@ index b828f88..ba542a5 100644
                ),
                const SizedBox(width: Sp.x2),
                OutlinedButton.icon(
-@@ -1692,20 +1709,20 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1692,20 +1732,20 @@ class _DeviceSheet extends StatelessWidget {
                      await live.clearAlarm();
                      if (context.mounted) {
                        Navigator.pop(context);
@@ -1803,7 +1835,7 @@ index b828f88..ba542a5 100644
            const SizedBox(height: Sp.x2),
            Wrap(
              spacing: Sp.x2,
-@@ -1720,11 +1737,11 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1720,11 +1760,11 @@ class _DeviceSheet extends StatelessWidget {
                        try {
                          await live.testBuzzPattern(p);
                          if (context.mounted) {
@@ -1817,7 +1849,7 @@ index b828f88..ba542a5 100644
                          }
                        }
                      },
-@@ -1740,7 +1757,7 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1740,7 +1780,7 @@ class _DeviceSheet extends StatelessWidget {
          Divider(height: Sp.x4, thickness: 1, color: AppColors.divider),
          ListRow(
            icon: OsIcon.info,
@@ -1826,7 +1858,7 @@ index b828f88..ba542a5 100644
            value: live.device.serial ?? live.paired?.serial ?? '—',
          ),
          const SizedBox(height: Sp.x4),
-@@ -1756,7 +1773,7 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1756,7 +1796,7 @@ class _DeviceSheet extends StatelessWidget {
              ),
              onPressed: () => _forget(context, live),
              icon: AppIcon(OsIcon.cancel, size: 18, color: AppColors.critical),
@@ -1835,7 +1867,7 @@ index b828f88..ba542a5 100644
            ),
          ),
        ],
-@@ -1780,20 +1797,20 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1780,20 +1820,20 @@ class _DeviceSheet extends StatelessWidget {
          borderRadius: BorderRadius.vertical(top: Radius.circular(R.card)),
        ),
        builder: (_) => _SheetShell(
@@ -1859,7 +1891,7 @@ index b828f88..ba542a5 100644
              ),
            ),
          ],
-@@ -1802,9 +1819,9 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1802,9 +1842,9 @@ class _DeviceSheet extends StatelessWidget {
      if (name == null || name.isEmpty) return;
      try {
        await app.renameStrap(name);
@@ -1871,7 +1903,7 @@ index b828f88..ba542a5 100644
      }
    }
  
-@@ -1828,38 +1845,39 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1828,38 +1868,39 @@ class _DeviceSheet extends StatelessWidget {
        if (context.mounted) {
          _snack(
            context,
@@ -1922,7 +1954,7 @@ index b828f88..ba542a5 100644
      }
    }
  }
-@@ -1920,12 +1938,12 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1920,12 +1961,12 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
        });
        if (mounted) {
          Navigator.pop(context);
@@ -1937,7 +1969,7 @@ index b828f88..ba542a5 100644
        }
      }
    }
-@@ -1933,7 +1951,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1933,7 +1974,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
    @override
    Widget build(BuildContext context) {
      return _SheetShell(
@@ -1946,7 +1978,7 @@ index b828f88..ba542a5 100644
        children: [
          TextField(
            controller: _name,
-@@ -1946,7 +1964,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1946,7 +1987,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
                child: TextField(
                  controller: _age,
                  keyboardType: TextInputType.number,
@@ -1955,7 +1987,7 @@ index b828f88..ba542a5 100644
                ),
              ),
              const SizedBox(width: Sp.x3),
-@@ -1968,7 +1986,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1968,7 +2009,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
            ],
          ),
          const SizedBox(height: Sp.x4),
@@ -1964,7 +1996,7 @@ index b828f88..ba542a5 100644
              style: AppText.overline.copyWith(color: AppColors.inkMuted)),
          const SizedBox(height: Sp.x2),
          Wrap(
-@@ -1976,14 +1994,18 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1976,14 +2017,18 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
            children: [
              for (final opt in const ['male', 'female', 'other'])
                ToggleChip(
@@ -1985,7 +2017,7 @@ index b828f88..ba542a5 100644
          const SizedBox(height: Sp.x5),
          SizedBox(
            width: double.infinity,
-@@ -1998,7 +2020,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1998,7 +2043,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
                        color: Colors.white,
                      ),
                    )
