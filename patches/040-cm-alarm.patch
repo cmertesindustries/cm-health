@@ -167,10 +167,10 @@ index 0000000..8e9b84c
 +}
 diff --git a/lib/notify/wake_engine.dart b/lib/notify/wake_engine.dart
 new file mode 100644
-index 0000000..15738b6
+index 0000000..301c047
 --- /dev/null
 +++ b/lib/notify/wake_engine.dart
-@@ -0,0 +1,314 @@
+@@ -0,0 +1,363 @@
 +// CM Health Wecker (v2.1.0) — die Weck-Maschine.
 +//
 +// Rollenverteilung (siehe alarm_models.dart für das Warum):
@@ -236,6 +236,18 @@ index 0000000..15738b6
 +  bool _overlayShown = false;
 +  int _ringingOccMs = 0; // Auslösezeitpunkt des laufenden Weckvorgangs
 +  bool _disposed = false;
++
++  // v2.1.2: OS-Planung SERIALISIERT. v2.1.1 stieß bei jeder Änderung eine
++  // eigene unkoordinierte cancel/schedule-Sequenz an — mehrere parallel
++  // laufende Neuplanungen konnten sich gegenseitig die frisch geplanten
++  // Benachrichtigungen wegräumen (im Feld beobachtet: bis zu 8 Neuplanungen
++  // in Folge). Jetzt: eine Future-Kette, ein Generationszähler — nur die
++  // zuletzt angeforderte Planung wird ausgeführt, veraltete werden
++  // übersprungen; gecancelt wird gezielt nur, was wir selbst geplant haben.
++  Future<void> _planChain = Future.value();
++  int _planGeneration = 0;
++  final Set<int> _scheduledIds = {};
++  bool _didInitialSweep = false;
 +
 +  /// Persistenz-Schlüssel: Auslösezeitpunkt (ms) des zuletzt ABGESCHALTETEN
 +  /// Weckvorgangs — verhindert, dass der Aufhol-Pfad in [init] einen bereits
@@ -315,24 +327,40 @@ index 0000000..15738b6
 +    final now = DateTime.now();
 +
 +    // OS-Sicherheitsnetz: pro aktivem Wecker die exakte Fallback-
-+    // Benachrichtigung auf T+45 s (neu) planen; alte Planungen ersetzen.
-+    unawaited(() async {
++    // Benachrichtigung auf T+60 s planen — NUR noch als Netz für den Fall
++    // "App-Prozess tot"; den Normalfall deckt seit v2.1.2 der Ring-Tick ab,
++    // der die Vollbild-Benachrichtigung direkt postet. Serialisiert (s. o.).
++    final gen = ++_planGeneration;
++    _planChain = _planChain.then((_) async {
++      if (gen != _planGeneration || _disposed) return; // veraltet — überspringen
 +      final n = NotificationService.instance;
-+      await n.cancelWakeBand();
++      if (!_didInitialSweep) {
++        // Einmalig pro App-Lauf: Altlasten früherer Sitzungen wegräumen.
++        _didInitialSweep = true;
++        await n.cancelWakeBand();
++      } else {
++        for (final id in List<int>.from(_scheduledIds)) {
++          await n.cancelWake(id);
++        }
++      }
++      _scheduledIds.clear();
 +      for (var i = 0; i < alarms.length; i++) {
++        if (gen != _planGeneration || _disposed) return;
 +        final a = alarms[i];
 +        if (!a.enabled || !a.fallbackEnabled) continue;
++        final id = NotificationService.idWakeBase + (i % 90);
 +        final at = a.nextOccurrence(now).add(const Duration(seconds: 60));
 +        await n.scheduleWakeFallback(
-+          id: NotificationService.idWakeBase + (i % 90),
++          id: id,
 +          at: at,
 +          style: _styleFor(a.fallbackMode),
 +          title: 'Wecker: ${a.name}',
 +          body:
 +              'Weckzeit ${fmtHm(a.hour, a.minute)} — in der App ausschalten.',
 +        );
++        _scheduledIds.add(id);
 +      }
-+    }());
++    });
 +
 +    // Nächsten Wecker bestimmen und den präzisen Timer stellen.
 +    CmAlarm? soonest;
@@ -407,13 +435,34 @@ index 0000000..15738b6
 +        unawaited(dismiss('Zeitlimit'));
 +        return;
 +      }
-+      // v2.1.1: 60 s ohne Doppeltipp → Ersatzwecker eskaliert zum
-+      // Vollbild-Weckbildschirm (im Vordergrund direkt; gesperrt/aus über
-+      // die ohnehin auf T+60 geplante Full-Screen-Intent-Notification).
++      // v2.1.2: 60 s ohne Doppeltipp → Ersatzwecker eskaliert. Der Prozess
++      // lebt (dieser Tick läuft ja) — also die Vollbild-Benachrichtigung
++      // DIREKT posten statt auf die geplante zu hoffen (deren Zustellung im
++      // Feld nie ankam). Eine live gepostete Full-Screen-Intent-Notification
++      // weckt das gesperrte Display sofort. Die evtl. noch anstehende
++      // geplante Zwillings-Benachrichtigung wird vorher entsorgt, damit es
++      // nicht doppelt klingelt.
 +      if (!_overlayShown &&
 +          (_ringing?.fallbackEnabled ?? false) &&
 +          elapsed >= const Duration(seconds: 60)) {
 +        _overlayShown = true;
++        final r = _ringing!;
++        _log('[wake] 60 s ohne Abschaltung — Ersatzwecker eskaliert '
++            '(Vollbild-Benachrichtigung wird direkt gepostet).');
++        unawaited(() async {
++          final n = NotificationService.instance;
++          final idx = alarms.indexWhere((a) => a.id == r.id);
++          if (idx >= 0) {
++            await n.cancelWake(NotificationService.idWakeBase + (idx % 90));
++          }
++          await n.showWakeNow(
++            id: NotificationService.idWakeRinging,
++            style: _styleFor(r.fallbackMode),
++            title: 'Wecker: ${r.name}',
++            body: 'Weckzeit ${fmtHm(r.hour, r.minute)} — Stopp in der App '
++                'oder Doppeltipp aufs Band.',
++          );
++        }());
 +        _onOverlay();
 +      }
 +      if (_isBandConnected()) {
@@ -465,9 +514,9 @@ index 0000000..15738b6
 +      final prefs = await SharedPreferences.getInstance();
 +      await prefs.setInt(_kDismissedOccKey, _ringingOccMs);
 +    } catch (_) {}
-+    // Geplante/gezeigte Fallbacks dieses Weckvorgangs einsammeln.
++    // Gezeigte/geplante Fallbacks dieses Weckvorgangs einsammeln — die
++    // Neuplanung unten ersetzt die geplanten Ids ohnehin serialisiert.
 +    final n = NotificationService.instance;
-+    await n.cancelWakeBand();
 +    await n.cancelWake(NotificationService.idWakeRinging);
 +    if (alarm.isOneShot) {
 +      final i = alarms.indexWhere((a) => a.id == alarm.id);

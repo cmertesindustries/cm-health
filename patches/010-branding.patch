@@ -77,7 +77,7 @@ index ce81bb5..dfc4e09 100644
      <string name="widget_battery_label">Band battery</string>
      <string name="widget_battery_description">Your strap\'s battery, from the last connection.</string>
 diff --git a/pubspec.yaml b/pubspec.yaml
-index f102c44..333f99d 100644
+index f102c44..c847ff7 100644
 --- a/pubspec.yaml
 +++ b/pubspec.yaml
 @@ -6,7 +6,7 @@ publish_to: 'none'
@@ -85,7 +85,7 @@ index f102c44..333f99d 100644
  # to FLUTTER_BUILD_NAME/FLUTTER_BUILD_NUMBER. See guides/IOS_INSTALLATION.md
  # "Version Numbers".
 -version: 0.9.26+57
-+version: 2.1.1+111
++version: 2.1.2+112
  
  environment:
    sdk: ^3.11.4
