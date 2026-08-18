@@ -12,6 +12,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../notify/notification_service.dart';
 import '../../state/app_state.dart';
 import '../../sync/file_log.dart';
 
@@ -58,6 +59,26 @@ Future<void> shareDiagnoseReport(
   buf.writeln('Unbestätigt (Warnzustand): ${app.alarmUnconfirmed}');
   buf.writeln('Letztes Alarm-Event: ${app.alarmLastEventId ?? '-'}');
   buf.writeln('Zuletzt ausgelöst: ${app.alarmFiredAt ?? '-'}');
+  buf.writeln('');
+
+  // ── Handy-Wecker (v2.1.2) ──
+  buf.writeln('── Handy-Wecker ──');
+  try {
+    final we = app.wakeEngine;
+    buf.writeln('Gespeicherte Wecker: ${we.alarms.length} '
+        '(aktiv: ${we.alarms.where((a) => a.enabled).length})');
+    final next = we.nextPlanned();
+    buf.writeln('Nächste Auslösung: '
+        '${next == null ? '-' : '${next.$2} (${next.$1.name})'}');
+    buf.writeln('Läuft gerade: ${we.ringing?.name ?? '-'}');
+  } catch (e) {
+    buf.writeln('Wecker-Status-Fehler: $e');
+  }
+  try {
+    buf.write(await NotificationService.instance.wakeDiagnostics());
+  } catch (e) {
+    buf.writeln('Notification-Diagnose-Fehler: $e');
+  }
   buf.writeln('');
 
   // ── Schritte (Telefon-Pipeline) ──
