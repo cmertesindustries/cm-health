@@ -126,8 +126,8 @@ class _IntervalTimerScreenState extends State<IntervalTimerScreen> {
                 const SizedBox(height: Sp.x2),
                 Text(
                   'Tippe auf ein Profil, um den Timer zu starten. Das Band '
-                  'vibriert bei Intervallstart, Pause und am Ende — die '
-                  'Vibrationsart stellst du im Profil ein.',
+                  'vibriert bei Intervallstart, Pause und am Ende — jeweils '
+                  'mit einem festen, unterscheidbaren Muster.',
                   style: AppText.captionMuted,
                 ),
               ],

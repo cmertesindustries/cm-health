@@ -29,9 +29,6 @@ class _IntervalTimerEditScreenState extends State<IntervalTimerEditScreen> {
   late final TextEditingController _name;
   late List<IntervalPhase> _phases;
   late int _rounds;
-  late BuzzCue _workCue;
-  late BuzzCue _restCue;
-  late BuzzCue _endCue;
   late final bool _isNew;
   late final String _id;
 
@@ -51,9 +48,6 @@ class _IntervalTimerEditScreenState extends State<IntervalTimerEditScreen> {
         IntervalPhase(name: ph.name, seconds: ph.seconds, kind: ph.kind),
     ];
     _rounds = p?.rounds ?? 4;
-    _workCue = p?.workCue ?? BuzzCue.long;
-    _restCue = p?.restCue ?? BuzzCue.short3;
-    _endCue = p?.endCue ?? BuzzCue.short2;
   }
 
   @override
@@ -74,9 +68,6 @@ class _IntervalTimerEditScreenState extends State<IntervalTimerEditScreen> {
       name: name,
       phases: _phases,
       rounds: _rounds,
-      workCue: _workCue,
-      restCue: _restCue,
-      endCue: _endCue,
     )));
   }
 
@@ -162,39 +153,6 @@ class _IntervalTimerEditScreenState extends State<IntervalTimerEditScreen> {
       ph.seconds = total;
       ph.kind = kind;
     });
-  }
-
-  Widget _cueRow(String title, String hint, BuzzCue value,
-      ValueChanged<BuzzCue> onChanged) {
-    final app = context.read<AppState>();
-    return ListRow(
-      icon: OsIcon.notifications,
-      title: title,
-      subtitle: hint,
-      divider: true,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          DropdownButton<BuzzCue>(
-            value: value,
-            underline: const SizedBox.shrink(),
-            items: [
-              for (final c in BuzzCue.values)
-                DropdownMenuItem(value: c, child: Text(buzzCueLabel(c))),
-            ],
-            onChanged: (c) {
-              if (c != null) onChanged(c);
-            },
-          ),
-          const SizedBox(width: Sp.x1),
-          // Feel it on the wrist before trusting it mid-workout.
-          RoundIconButton(
-            OsIcon.arrowRight,
-            onTap: () => playBuzzCue(app, value),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -291,23 +249,12 @@ class _IntervalTimerEditScreenState extends State<IntervalTimerEditScreen> {
         const SizedBox(height: Sp.x4),
         SectionHeader('Vibration am Band'),
         const SizedBox(height: Sp.x2),
-        SurfaceCard(
-          padding: const EdgeInsets.symmetric(vertical: Sp.x1),
-          child: Column(
-            children: [
-              _cueRow('Intervallstart', 'Wenn eine Belastungsphase beginnt',
-                  _workCue, (c) => setState(() => _workCue = c)),
-              _cueRow('Pause', 'Wenn eine Pausenphase beginnt', _restCue,
-                  (c) => setState(() => _restCue = c)),
-              _cueRow('Ende', 'Wenn die letzte Runde vorbei ist', _endCue,
-                  (c) => setState(() => _endCue = c)),
-            ],
-          ),
-        ),
-        const SizedBox(height: Sp.x2),
+        // v2.1.0: fest verdrahtet, nicht mehr einstellbar (Feldtest 18.08.:
+        // die Firmware kann nur die Effekte 0/1/2 — konfigurierbare Rhythmen
+        // waren Scheinvielfalt): 0 = Intervallstart, 2 = Pause, 1 = Ende.
         Text(
-          'Mit dem Pfeil-Knopf kannst du jede Vibrationsart sofort am Band '
-          'testen (Band muss verbunden sein).',
+          'Intervallstart, Pause und Ende haben feste, unterscheidbare '
+          'Vibrationsmuster — die drei Effekte, die das Band beherrscht.',
           style: AppText.captionMuted,
         ),
         const SizedBox(height: Sp.x6),

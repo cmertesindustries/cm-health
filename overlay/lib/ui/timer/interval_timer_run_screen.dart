@@ -87,7 +87,7 @@ class _IntervalTimerRunScreenState extends State<IntervalTimerRunScreen> {
         _running = false;
         _remainingMs = 0;
       });
-      unawaited(playBuzzCue(app, p.endCue));
+      unawaited(playEndCue(app));
       unawaited(HapticFeedback.heavyImpact());
       return;
     }
@@ -97,8 +97,7 @@ class _IntervalTimerRunScreenState extends State<IntervalTimerRunScreen> {
           .add(Duration(seconds: _steps[next].phase.seconds));
       _remainingMs = _steps[next].phase.seconds * 1000;
     });
-    final cue = _steps[next].phase.kind == PhaseKind.work ? p.workCue : p.restCue;
-    unawaited(playBuzzCue(app, cue));
+    unawaited(playPhaseCue(app, _steps[next].phase.kind));
     unawaited(HapticFeedback.mediumImpact());
   }
 

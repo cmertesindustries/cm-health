@@ -20,48 +20,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../state/app_state.dart';
 
 // ── buzz cues ────────────────────────────────────────────────────────────────
+//
+// v2.1.0: FEST VERDRAHTET. Feldtest (18.08.2026): Diese Band-Firmware kennt
+// genau drei wirksame Haptik-Effekte (0, 1, 2) — 3–7 tun nichts, und selbst
+// komponierte Impulsfolgen (2×/3× kurz mit Pausen) fühlen sich am Handgelenk
+// alle gleich an. Konfigurierbare Rhythmen waren damit Scheinvielfalt.
+// Christians Festlegung: Effekt 0 = Intervallstart, 2 = Pause, 1 = Ende.
 
+const int kWorkStartEffect = 0; // Belastungsphase beginnt
+const int kRestStartEffect = 2; // Pausenphase beginnt
+const int kSessionEndEffect = 1; // letzte Runde vorbei
+
+/// Historisch (v2.0.x): konfigurierbare Impulsfolgen. Die Enum bleibt nur,
+/// damit gespeicherte Profile aus alten Versionen weiter laden — die Werte
+/// werden nicht mehr benutzt.
 enum BuzzCue { none, short1, short2, short3, long }
 
-String buzzCueLabel(BuzzCue c) => switch (c) {
-      BuzzCue.none => 'Keine Vibration',
-      BuzzCue.short1 => '1× kurz',
-      BuzzCue.short2 => '2× kurz',
-      BuzzCue.short3 => '3× kurz',
-      BuzzCue.long => 'Lang (ca. 2 s)',
-    };
+/// Fire the phase-start cue on the band. Best-effort: a disconnected band
+/// never breaks a running timer — the on-screen countdown is the source of
+/// truth.
+Future<void> playPhaseCue(AppState app, PhaseKind kind) =>
+    _effect(app, kind == PhaseKind.work ? kWorkStartEffect : kRestStartEffect);
 
-/// Fire a cue on the band. Best-effort: a disconnected band never breaks a
-/// running timer — the on-screen countdown is the source of truth.
-Future<void> playBuzzCue(AppState app, BuzzCue cue) async {
-  if (cue == BuzzCue.none) return;
-  Future<void> pulse() async {
-    try {
-      await app.testBuzzPattern(1);
-    } catch (_) {/* not connected — screen still shows the change */}
-  }
+Future<void> playEndCue(AppState app) => _effect(app, kSessionEndEffect);
 
-  switch (cue) {
-    case BuzzCue.none:
-      break;
-    case BuzzCue.short1:
-      await pulse();
-    case BuzzCue.short2:
-      await pulse();
-      await Future<void>.delayed(const Duration(milliseconds: 900));
-      await pulse();
-    case BuzzCue.short3:
-      for (var i = 0; i < 3; i++) {
-        if (i > 0) await Future<void>.delayed(const Duration(milliseconds: 900));
-        await pulse();
-      }
-    case BuzzCue.long:
-      // Rapid frames merge into one continuous ~2 s sensation (see header).
-      for (var i = 0; i < 5; i++) {
-        await pulse();
-        await Future<void>.delayed(const Duration(milliseconds: 120));
-      }
-  }
+Future<void> _effect(AppState app, int id) async {
+  try {
+    await app.testBuzzPattern(id);
+  } catch (_) {/* not connected — screen still shows the change */}
 }
 
 // ── model ────────────────────────────────────────────────────────────────────
