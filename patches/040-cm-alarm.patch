@@ -1,9 +1,9 @@
 diff --git a/lib/models/cm_alarm.dart b/lib/models/cm_alarm.dart
 new file mode 100644
-index 0000000..8e9b84c
+index 0000000..c247c08
 --- /dev/null
 +++ b/lib/models/cm_alarm.dart
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,189 @@
 +// CM Health Wecker (v2.1.0) — Datenmodell + Persistenz + Zeitrechnung.
 +//
 +// DESIGN: Das Handy hält die Weckzeiten, nicht das Band. Die Band-Firmware
@@ -33,6 +33,16 @@ index 0000000..8e9b84c
 +      FallbackMode.silent => 'Stumm',
 +    };
 +
++/// v2.2.0: Handy-Vibrationsmuster des Ersatzweckers (nativ, wiederholend).
++enum PhoneVibe { standard, doppel, lang, sos }
++
++String phoneVibeLabel(PhoneVibe v) => switch (v) {
++      PhoneVibe.standard => 'Standard',
++      PhoneVibe.doppel => 'Doppelpuls',
++      PhoneVibe.lang => 'Lang',
++      PhoneVibe.sos => 'SOS',
++    };
++
 +class CmAlarm {
 +  String id;
 +  String name;
@@ -46,6 +56,12 @@ index 0000000..8e9b84c
 +  bool fallbackEnabled;
 +  FallbackMode fallbackMode;
 +
++  /// v2.2.0: Klingelton des Ersatzweckers (System-Weckerton-URI; null =
++  /// Standard-Weckerton) + Anzeigename und Handy-Vibrationsmuster.
++  String? phoneToneUri;
++  String? phoneToneName;
++  PhoneVibe phoneVibe;
++
 +  CmAlarm({
 +    required this.id,
 +    required this.name,
@@ -56,6 +72,9 @@ index 0000000..8e9b84c
 +    this.bandPattern = 1,
 +    this.fallbackEnabled = true,
 +    this.fallbackMode = FallbackMode.loud,
++    this.phoneToneUri,
++    this.phoneToneName,
++    this.phoneVibe = PhoneVibe.standard,
 +  }) : weekdays = weekdays ?? <int>{};
 +
 +  bool get isOneShot => weekdays.isEmpty;
@@ -85,6 +104,9 @@ index 0000000..8e9b84c
 +        'bandPattern': bandPattern,
 +        'fallbackEnabled': fallbackEnabled,
 +        'fallbackMode': fallbackMode.name,
++        'phoneToneUri': phoneToneUri,
++        'phoneToneName': phoneToneName,
++        'phoneVibe': phoneVibe.name,
 +      };
 +
 +  factory CmAlarm.fromJson(Map<String, dynamic> j) => CmAlarm(
@@ -104,6 +126,12 @@ index 0000000..8e9b84c
 +                .where((m) => m.name == j['fallbackMode'])
 +                .firstOrNull ??
 +            FallbackMode.loud,
++        phoneToneUri: j['phoneToneUri'] as String?,
++        phoneToneName: j['phoneToneName'] as String?,
++        phoneVibe: PhoneVibe.values
++                .where((v) => v.name == j['phoneVibe'])
++                .firstOrNull ??
++            PhoneVibe.standard,
 +      );
 +}
 +
@@ -167,10 +195,10 @@ index 0000000..8e9b84c
 +}
 diff --git a/lib/notify/wake_engine.dart b/lib/notify/wake_engine.dart
 new file mode 100644
-index 0000000..301c047
+index 0000000..8d0bcbb
 --- /dev/null
 +++ b/lib/notify/wake_engine.dart
-@@ -0,0 +1,363 @@
+@@ -0,0 +1,364 @@
 +// CM Health Wecker (v2.1.0) — die Weck-Maschine.
 +//
 +// Rollenverteilung (siehe alarm_models.dart für das Warum):
@@ -196,6 +224,7 @@ index 0000000..301c047
 +
 +import '../models/cm_alarm.dart';
 +import 'notification_service.dart';
++import 'wake_native.dart';
 +
 +class WakeEngine {
 +  WakeEngine({
@@ -410,19 +439,9 @@ index 0000000..301c047
 +    _log('[wake] WECKER FEUERT: "${alarm.name}" — Band-Schleife startet '
 +        '(verbunden: ${_isBandConnected()}).');
 +
-+    // Band nicht da → Handy übernimmt sofort (im eingestellten Modus):
-+    // Vollbild-Weckbildschirm + Notification (weckt Display über den
-+    // Full-Screen-Intent, wenn das Handy gesperrt ist).
++    // Band nicht da → Handy übernimmt sofort (im eingestellten Modus).
 +    if (!_isBandConnected() && alarm.fallbackEnabled) {
-+      _fallbackShown = true;
-+      _overlayShown = true;
-+      unawaited(NotificationService.instance.showWakeNow(
-+        id: NotificationService.idWakeRinging,
-+        style: _styleFor(alarm.fallbackMode),
-+        title: 'Wecker: ${alarm.name}',
-+        body: 'Band nicht verbunden — Handy übernimmt.',
-+      ));
-+      _onOverlay();
++      _escalate(alarm, reason: 'Band nicht verbunden');
 +    }
 +
 +    unawaited(_buzz(alarm.bandPattern)); // erster Buzz sofort
@@ -435,54 +454,63 @@ index 0000000..301c047
 +        unawaited(dismiss('Zeitlimit'));
 +        return;
 +      }
-+      // v2.1.2: 60 s ohne Doppeltipp → Ersatzwecker eskaliert. Der Prozess
-+      // lebt (dieser Tick läuft ja) — also die Vollbild-Benachrichtigung
-+      // DIREKT posten statt auf die geplante zu hoffen (deren Zustellung im
-+      // Feld nie ankam). Eine live gepostete Full-Screen-Intent-Notification
-+      // weckt das gesperrte Display sofort. Die evtl. noch anstehende
-+      // geplante Zwillings-Benachrichtigung wird vorher entsorgt, damit es
-+      // nicht doppelt klingelt.
++      // 60 s ohne Doppeltipp → Ersatzwecker eskaliert (v2.2.0: nativ).
 +      if (!_overlayShown &&
 +          (_ringing?.fallbackEnabled ?? false) &&
 +          elapsed >= const Duration(seconds: 60)) {
-+        _overlayShown = true;
-+        final r = _ringing!;
-+        _log('[wake] 60 s ohne Abschaltung — Ersatzwecker eskaliert '
-+            '(Vollbild-Benachrichtigung wird direkt gepostet).');
-+        unawaited(() async {
-+          final n = NotificationService.instance;
-+          final idx = alarms.indexWhere((a) => a.id == r.id);
-+          if (idx >= 0) {
-+            await n.cancelWake(NotificationService.idWakeBase + (idx % 90));
-+          }
-+          await n.showWakeNow(
-+            id: NotificationService.idWakeRinging,
-+            style: _styleFor(r.fallbackMode),
-+            title: 'Wecker: ${r.name}',
-+            body: 'Weckzeit ${fmtHm(r.hour, r.minute)} — Stopp in der App '
-+                'oder Doppeltipp aufs Band.',
-+          );
-+        }());
-+        _onOverlay();
++        _escalate(_ringing!, reason: '60 s ohne Abschaltung');
 +      }
 +      if (_isBandConnected()) {
 +        unawaited(_buzz(_ringing?.bandPattern ?? 1));
-+      } else if (!_fallbackShown && (_ringing?.fallbackEnabled ?? false)) {
-+        // Band während des Weckens weggebrochen → Handy übernimmt.
-+        _fallbackShown = true;
-+        unawaited(NotificationService.instance.showWakeNow(
-+          id: NotificationService.idWakeRinging,
-+          style: _styleFor(_ringing!.fallbackMode),
-+          title: 'Wecker: ${_ringing!.name}',
-+          body: 'Band nicht verbunden — Handy übernimmt.',
-+        ));
-+        if (!_overlayShown) {
-+          _overlayShown = true;
-+          _onOverlay();
-+        }
++      } else if (!_overlayShown && (_ringing?.fallbackEnabled ?? false)) {
++        // Band während des Weckens weggebrochen → Handy übernimmt sofort.
++        _escalate(_ringing!, reason: 'Band während des Weckens getrennt');
 +      }
 +    });
 +    _onChanged();
++  }
++
++  /// v2.2.0: Der Ersatzwecker eskaliert — wie eine echte Wecker-App.
++  /// Vollbild-Weckbildschirm (in-App-Push + Activity nach vorn holen, damit
++  /// er auch über anderen Apps erscheint; bei gesperrtem Display übernimmt
++  /// zusätzlich der Full-Screen-Intent der Notification) und je Modus:
++  /// Laut = Ton über den ALARM-Audiokanal (klingelt IMMER, unabhängig vom
++  /// Klingeln/Vibration/Stumm-Modus des Handys) + Handy-Vibration;
++  /// Vibrieren = Handy-Vibration (wiederholendes Muster); Stumm = nur der
++  /// Bildschirm. Die Notification wird stumm gepostet (Statusleiste +
++  /// FSI-Weckung) — Ton/Vibration kommen ausschließlich aus dem nativen
++  /// Modul, sonst klänge es doppelt.
++  void _escalate(CmAlarm r, {required String reason}) {
++    _fallbackShown = true;
++    _overlayShown = true;
++    _log('[wake] Ersatzwecker eskaliert ($reason) — Modus ${r.fallbackMode.name}.');
++    unawaited(() async {
++      final n = NotificationService.instance;
++      final idx = alarms.indexWhere((a) => a.id == r.id);
++      if (idx >= 0) {
++        await n.cancelWake(NotificationService.idWakeBase + (idx % 90));
++      }
++      await n.showWakeNow(
++        id: NotificationService.idWakeRinging,
++        style: WakeStyle.silent,
++        title: 'Wecker: ${r.name}',
++        body: 'Weckzeit ${fmtHm(r.hour, r.minute)} — Stopp in der App '
++            'oder Doppeltipp aufs Band.',
++      );
++    }());
++    switch (r.fallbackMode) {
++      case FallbackMode.loud:
++        unawaited(WakeNative.playTone(uri: r.phoneToneUri, loop: true));
++        unawaited(
++            WakeNative.vibratePattern(WakeNative.patternFor(r.phoneVibe)));
++      case FallbackMode.vibrate:
++        unawaited(
++            WakeNative.vibratePattern(WakeNative.patternFor(r.phoneVibe)));
++      case FallbackMode.silent:
++        break;
++    }
++    unawaited(WakeNative.bringToFront());
++    _onOverlay();
 +  }
 +
 +  /// Doppeltipp aufs Band (Event 14). [tsEpochSec] ist der Band-Zeitstempel —
@@ -508,6 +536,7 @@ index 0000000..301c047
 +    _ringing = null;
 +    _ringingSince = null;
 +    _overlayShown = false;
++    unawaited(WakeNative.stopAll()); // Ton + Handy-Vibration sofort beenden
 +    _log('[wake] Wecker "${alarm.name}" beendet ($source).');
 +    // Diesen Weckvorgang als quittiert festhalten (für den Aufhol-Pfad).
 +    try {
@@ -534,12 +563,120 @@ index 0000000..301c047
 +    _ringTick?.cancel();
 +  }
 +}
+diff --git a/lib/notify/wake_native.dart b/lib/notify/wake_native.dart
+new file mode 100644
+index 0000000..4a50f8d
+--- /dev/null
++++ b/lib/notify/wake_native.dart
+@@ -0,0 +1,102 @@
++// CM Health Wecker (v2.2.0) — Dart-Seite des nativen Weck-Moduls.
++//
++// Gegenstück zum MethodChannel 'cm_health/wake' in NativeChannels.kt. Alles
++// best-effort: ein Fehler im nativen Modul darf nie das Wecken selbst
++// (Band-Schleife + Weckbildschirm + Notification) mitreißen.
++//
++// Warum nativ statt Notification-Mechanik: Der Weckton läuft über den
++// ALARM-Audiokanal (USAGE_ALARM) und klingelt damit IMMER — egal ob das
++// Handy auf Klingeln, Vibration oder Stumm steht (Lautstärke = System-
++// Weckerlautstärke). Die Handy-Vibration ist ein wiederholendes Muster
++// statt des einen kurzen Notification-Brummers.
++
++import 'package:flutter/services.dart';
++
++import '../models/cm_alarm.dart';
++
++class WakeNative {
++  static const _ch = MethodChannel('cm_health/wake');
++
++  /// Verfügbare System-Weckertöne: Liste aus {title, uri}.
++  static Future<List<Map<String, String>>> listAlarmTones() async {
++    try {
++      final raw = await _ch.invokeMethod<List<dynamic>>('listAlarmTones');
++      return [
++        for (final e in raw ?? const [])
++          {
++            'title': (e as Map)['title']?.toString() ?? 'Ton',
++            'uri': e['uri']?.toString() ?? '',
++          }
++      ];
++    } catch (_) {
++      return const [];
++    }
++  }
++
++  /// [uri] null = System-Standard-Weckerton. [loop] false = einmal (Probe).
++  static Future<void> playTone({String? uri, bool loop = true}) async {
++    try {
++      await _ch.invokeMethod('playTone', {'uri': uri, 'loop': loop});
++    } catch (_) {}
++  }
++
++  static Future<void> stopTone() async {
++    try {
++      await _ch.invokeMethod('stopTone');
++    } catch (_) {}
++  }
++
++  /// [repeat] 0 = ab Index 0 endlos wiederholen, -1 = einmal (Probe).
++  static Future<void> vibratePattern(List<int> pattern, {int repeat = 0}) async {
++    try {
++      await _ch.invokeMethod(
++          'vibratePattern', {'pattern': pattern, 'repeat': repeat});
++    } catch (_) {}
++  }
++
++  static Future<void> stopVibrate() async {
++    try {
++      await _ch.invokeMethod('stopVibrate');
++    } catch (_) {}
++  }
++
++  /// Weckbildschirm-Übernahme (auch über anderen Apps).
++  static Future<void> bringToFront() async {
++    try {
++      await _ch.invokeMethod('bringToFront');
++    } catch (_) {}
++  }
++
++  static Future<bool> hasOverlayPermission() async {
++    try {
++      return await _ch.invokeMethod<bool>('hasOverlayPermission') ?? false;
++    } catch (_) {
++      return false;
++    }
++  }
++
++  static Future<void> requestOverlayPermission() async {
++    try {
++      await _ch.invokeMethod('requestOverlayPermission');
++    } catch (_) {}
++  }
++
++  /// Alles Hörbare/Fühlbare am Handy beenden (Doppeltipp/Stopp/Zeitlimit).
++  static Future<void> stopAll() async {
++    await stopTone();
++    await stopVibrate();
++  }
++
++  /// Vibrationsmuster in ms ([Pause, Vibrieren, Pause, …]) je Auswahl.
++  static List<int> patternFor(PhoneVibe v) => switch (v) {
++        PhoneVibe.standard => const [0, 800, 800],
++        PhoneVibe.doppel => const [0, 300, 200, 300, 1200],
++        PhoneVibe.lang => const [0, 1500, 700],
++        PhoneVibe.sos => const [
++            0, 180, 120, 180, 120, 180, // ···
++            300, 500, 150, 500, 150, 500, // ———
++            300, 180, 120, 180, 120, 180, // ···
++            1200,
++          ],
++      };
++}
 diff --git a/lib/ui/alarm/alarm_edit_screen.dart b/lib/ui/alarm/alarm_edit_screen.dart
 new file mode 100644
-index 0000000..522dcc9
+index 0000000..d70d956
 --- /dev/null
 +++ b/lib/ui/alarm/alarm_edit_screen.dart
-@@ -0,0 +1,265 @@
+@@ -0,0 +1,390 @@
 +// CM Health Wecker (v2.1.0) — Wecker-Editor.
 +//
 +// Je Wecker: Name, Uhrzeit, Wochentage (leer = Einmal-Wecker),
@@ -555,6 +692,7 @@ index 0000000..522dcc9
 +import '../design/design.dart';
 +import '../kit/kit.dart';
 +import '../../models/cm_alarm.dart';
++import '../../notify/wake_native.dart';
 +
 +class AlarmEditResult {
 +  final CmAlarm alarm;
@@ -579,6 +717,9 @@ index 0000000..522dcc9
 +  late int _pattern;
 +  late bool _fallbackEnabled;
 +  late FallbackMode _fallbackMode;
++  String? _toneUri;
++  String? _toneName;
++  late PhoneVibe _phoneVibe;
 +
 +  bool get _isNew => widget.alarm == null;
 +
@@ -594,6 +735,9 @@ index 0000000..522dcc9
 +    _pattern = a?.bandPattern ?? 1;
 +    _fallbackEnabled = a?.fallbackEnabled ?? true;
 +    _fallbackMode = a?.fallbackMode ?? FallbackMode.loud;
++    _toneUri = a?.phoneToneUri;
++    _toneName = a?.phoneToneName;
++    _phoneVibe = a?.phoneVibe ?? PhoneVibe.standard;
 +  }
 +
 +  @override
@@ -614,6 +758,9 @@ index 0000000..522dcc9
 +      bandPattern: _pattern,
 +      fallbackEnabled: _fallbackEnabled,
 +      fallbackMode: _fallbackMode,
++      phoneToneUri: _toneUri,
++      phoneToneName: _toneName,
++      phoneVibe: _phoneVibe,
 +    )));
 +  }
 +
@@ -627,6 +774,84 @@ index 0000000..522dcc9
 +      _hour = t.hour;
 +      _minute = t.minute;
 +    });
++  }
++
++  /// v2.2.0: Klingelton-Auswahl aus den System-Weckertönen, mit Probe.
++  Future<void> _pickRingtone() async {
++    final tones = await WakeNative.listAlarmTones();
++    if (!mounted) return;
++    await showModalBottomSheet<void>(
++      context: context,
++      isScrollControlled: true,
++      backgroundColor: AppColors.surfaceElevated,
++      shape: const RoundedRectangleBorder(
++        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
++      ),
++      builder: (ctx) => StatefulBuilder(
++        builder: (ctx, setSheet) => SafeArea(
++          child: SizedBox(
++            height: MediaQuery.of(ctx).size.height * 0.6,
++            child: Column(
++              crossAxisAlignment: CrossAxisAlignment.start,
++              children: [
++                Padding(
++                  padding:
++                      const EdgeInsets.fromLTRB(Sp.x6, Sp.x4, Sp.x6, Sp.x2),
++                  child: Text('Klingelton wählen', style: AppText.h2),
++                ),
++                Expanded(
++                  child: ListView(
++                    children: [
++                      ListTile(
++                        title: Text('System-Standard', style: AppText.body),
++                        trailing:
++                            _toneUri == null ? const Icon(Icons.check) : null,
++                        onTap: () {
++                          WakeNative.playTone(uri: null, loop: false);
++                          setState(() {
++                            _toneUri = null;
++                            _toneName = null;
++                          });
++                          setSheet(() {});
++                        },
++                      ),
++                      for (final t in tones)
++                        ListTile(
++                          title:
++                              Text(t['title'] ?? 'Ton', style: AppText.body),
++                          trailing: _toneUri == t['uri']
++                              ? const Icon(Icons.check)
++                              : null,
++                          onTap: () {
++                            WakeNative.playTone(uri: t['uri'], loop: false);
++                            setState(() {
++                              _toneUri = t['uri'];
++                              _toneName = t['title'];
++                            });
++                            setSheet(() {});
++                          },
++                        ),
++                    ],
++                  ),
++                ),
++                Padding(
++                  padding: const EdgeInsets.all(Sp.x4),
++                  child: SizedBox(
++                    width: double.infinity,
++                    child: FilledButton(
++                      onPressed: () => Navigator.pop(ctx),
++                      child: const Text('Fertig'),
++                    ),
++                  ),
++                ),
++              ],
++            ),
++          ),
++        ),
++      ),
++    );
++    await WakeNative.stopTone(); // Probe beim Schließen sicher beenden
++    if (mounted) setState(() {});
 +  }
 +
 +  @override
@@ -728,7 +953,7 @@ index 0000000..522dcc9
 +                  value: _fallbackEnabled,
 +                  onChanged: (v) => setState(() => _fallbackEnabled = v),
 +                ),
-+                if (_fallbackEnabled)
++                if (_fallbackEnabled) ...[
 +                  Padding(
 +                    padding: const EdgeInsets.only(bottom: Sp.x3),
 +                    child: SegmentedControl(
@@ -739,6 +964,43 @@ index 0000000..522dcc9
 +                          () => _fallbackMode = FallbackMode.values[i]),
 +                    ),
 +                  ),
++                  // v2.2.0: Laut klingelt über den ALARM-Audiokanal — immer,
++                  // egal ob das Handy auf Klingeln/Vibration/Stumm steht.
++                  if (_fallbackMode == FallbackMode.loud)
++                    ListTile(
++                      contentPadding: EdgeInsets.zero,
++                      title: Text('Klingelton', style: AppText.body),
++                      subtitle: Text(_toneName ?? 'System-Standard',
++                          style: AppText.captionMuted),
++                      trailing: const Icon(Icons.chevron_right),
++                      onTap: _pickRingtone,
++                    ),
++                  if (_fallbackMode != FallbackMode.silent) ...[
++                    Padding(
++                      padding:
++                          const EdgeInsets.only(top: Sp.x1, bottom: Sp.x1),
++                      child:
++                          Text('Handy-Vibration', style: AppText.captionMuted),
++                    ),
++                    Padding(
++                      padding: const EdgeInsets.only(bottom: Sp.x3),
++                      child: SegmentedControl(
++                        options: [
++                          for (final v in PhoneVibe.values) phoneVibeLabel(v)
++                        ],
++                        index: _phoneVibe.index,
++                        expanded: true,
++                        onChanged: (i) {
++                          setState(() => _phoneVibe = PhoneVibe.values[i]);
++                          // Probe: Muster einmal abspielen (nicht wiederholend).
++                          WakeNative.vibratePattern(
++                              WakeNative.patternFor(PhoneVibe.values[i]),
++                              repeat: -1);
++                        },
++                      ),
++                    ),
++                  ],
++                ],
 +              ],
 +            ),
 +          ),
@@ -807,10 +1069,10 @@ index 0000000..522dcc9
 +}
 diff --git a/lib/ui/alarm/alarm_screen.dart b/lib/ui/alarm/alarm_screen.dart
 new file mode 100644
-index 0000000..b7f289f
+index 0000000..0845886
 --- /dev/null
 +++ b/lib/ui/alarm/alarm_screen.dart
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,143 @@
 +// CM Health Wecker (v2.1.0) — Weckerliste.
 +//
 +// Eigener Menüpunkt (Today-Kopfzeile, wie der Intervall-Timer): alle
@@ -827,6 +1089,7 @@ index 0000000..b7f289f
 +import '../kit/kit.dart';
 +import '../../models/cm_alarm.dart';
 +import '../../notify/notification_service.dart';
++import '../../notify/wake_native.dart';
 +import 'alarm_edit_screen.dart';
 +
 +class AlarmScreen extends StatelessWidget {
@@ -849,6 +1112,11 @@ index 0000000..b7f289f
 +      // "Vollbildbenachrichtigungen" — No-op, wenn schon erteilt; sonst
 +      // öffnet sich die System-Einstellungsseite (v2.1.1).
 +      await NotificationService.instance.ensureFullScreenPermission();
++      // v2.2.0: Bildschirm-Übernahme über anderen Apps braucht "Über anderen
++      // Apps anzeigen" — einmalig anfragen (öffnet die Einstellungsseite).
++      if (!await WakeNative.hasOverlayPermission()) {
++        await WakeNative.requestOverlayPermission();
++      }
 +    }
 +  }
 +

@@ -1692,7 +1692,7 @@ index a99d3b3..de5233d 100644
          minute: t % 60,
          route: '/today',
 diff --git a/lib/notify/notification_service.dart b/lib/notify/notification_service.dart
-index 86060d3..ba43e18 100644
+index 86060d3..47a99d3 100644
 --- a/lib/notify/notification_service.dart
 +++ b/lib/notify/notification_service.dart
 @@ -67,6 +67,10 @@ tz.TZDateTime nextInstanceOf(
@@ -1803,7 +1803,7 @@ index 86060d3..ba43e18 100644
    AndroidNotificationChannel _channelFor(NotifCategory c) => switch (c) {
          NotifCategory.health => _healthChannel,
          NotifCategory.recovery => _recoveryChannel,
-@@ -168,9 +221,160 @@ class NotificationService {
+@@ -168,9 +221,164 @@ class NotificationService {
      await androidImpl?.createNotificationChannel(_healthChannel);
      await androidImpl?.createNotificationChannel(_recoveryChannel);
      await androidImpl?.createNotificationChannel(_remindersChannel);
@@ -1854,7 +1854,11 @@ index 86060d3..ba43e18 100644
 +    required String body,
 +  }) async {
 +    try {
-+      if (!await ensurePermission()) {
++      // allowPrompt:false — der Prompt-Pfad braucht eine Activity und crasht
++      // mit NPE, wenn die App nur mit Hintergrunddienst läuft (Feld-Diagnose
++      // 18.08.: "Context.checkPermission on null"). Der context-basierte
++      // Check reicht hier: die Erlaubnis wurde beim Einrichten längst erteilt.
++      if (!await ensurePermission(allowPrompt: false)) {
 +        _wlog('scheduleWakeFallback #$id ABGELEHNT: keine Benachrichtigungs-Erlaubnis.');
 +        return;
 +      }
@@ -1883,7 +1887,7 @@ index 86060d3..ba43e18 100644
 +    required String body,
 +  }) async {
 +    try {
-+      if (!await ensurePermission()) {
++      if (!await ensurePermission(allowPrompt: false)) {
 +        _wlog('showWakeNow #$id ABGELEHNT: keine Benachrichtigungs-Erlaubnis.');
 +        return;
 +      }
