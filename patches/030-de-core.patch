@@ -171,7 +171,7 @@ index d831186..db4a705 100644
      return id;
    }
 diff --git a/lib/ble/ble_engine.dart b/lib/ble/ble_engine.dart
-index a1303a8..c7d1256 100644
+index a1303a8..044647d 100644
 --- a/lib/ble/ble_engine.dart
 +++ b/lib/ble/ble_engine.dart
 @@ -1954,6 +1954,27 @@ class BleEngine {
@@ -202,7 +202,72 @@ index a1303a8..c7d1256 100644
          onEvent?.call(e.eventId, e.tsEpoch, _innerHex(frame.inner));
        }
      } else if (pt == PacketType.consoleLogs && _offloadActive) {
-@@ -3054,6 +3075,62 @@ class BleEngine {
+@@ -2196,51 +2217,21 @@ class BleEngine {
+       onState(state);
+     }
+     if (f.containsKey('clock_epoch')) {
++      // CM Health v2.1.0: GET_CLOCK wird auf dieser Firmware um ein Byte
++      // versetzt geparst (Werte laufen 256× zu schnell) UND liefert nach
++      // Band-Neustarts uralte Vergangenheitswerte, die das frühere Sanity-
++      // Gate (das nur ZUKUNFTS-Ausreißer verwarf) passierten und _clockRef
++      // vergifteten — ein Wecker wurde so 2,6 Jahre in der Vergangenheit
++      // gestellt. Deshalb: GET_CLOCK-Antworten werden NUR NOCH geloggt und
++      // korrelieren die Band-Uhr NIE — die einzige vertrauenswürdige Quelle
++      // ist die Event-Zeitstempel-Korrelation im Event-Pfad (s. parseEvent-
++      // Branch). Auch SET_CLOCK wird hier nicht mehr nachgezogen: sein
++      // Erfolg wäre über GET_CLOCK ohnehin nicht verifizierbar.
+       final dev = f['clock_epoch'] as int;
+       final wall = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+-      // SANITY GATE, mirroring the one `range_newest` gets below. An
+-      // implausibly far-future `clock_epoch` yields a large NEGATIVE driftSec,
+-      // and setAlarm arms at `when - driftSec` — years out, where the alarm
+-      // silently never fires — while the bounded SET_CLOCK retry budget is
+-      // spent chasing a value that was never real. Reject the read: with no
+-      // correlation the alarm falls back to the raw wall epoch. connect()
+-      // already issues an unconditional SET_CLOCK, and the periodic re-verify
+-      // re-reads, so a genuinely-wrong RTC still gets corrected.
+-      if (!ClockPolicy.acceptsClockRead(dev, wall)) {
+-        _corruptClockReadCount++;
+-        _log(
+-          '[SYNC] GET_CLOCK clock_epoch=$dev is implausibly far in the future '
+-          '— treating as a corrupt strap RTC read; NOT correlating the strap '
+-          'clock (alarms fall back to the raw wall epoch) '
+-          '(corrupt_clock_reads_total=$_corruptClockReadCount).',
+-        );
+-      } else {
+-        _clockRef = ClockRef(device: dev, wall: wall);
+-        _log('Clock correlated: device=$dev wall=$wall (drift=${wall - dev}s).');
+-        // Re-issue SET_CLOCK if the strap RTC has drifted > 1 day or is unset —
+-        // but BOUND the retries: setClock() reads the clock back, so an
+-        // unbounded re-issue on a firmware that never latches either payload
+-        // form would spin SET_CLOCK/GET_CLOCK forever. Historical records carry
+-        // their own embedded unix time regardless, so giving up after a few
+-        // tries is safe.
+-        if (ClockPolicy.shouldSetClock(dev, wall)) {
+-          if (_clockCorrectTries < 3) {
+-            _clockCorrectTries++;
+-            _log(
+-              'Clock drift over policy — re-issuing SET_CLOCK '
+-              '(attempt $_clockCorrectTries/3).',
+-            );
+-            unawaited(setClock());
+-          } else {
+-            _log(
+-              'Clock still off after 3 SET_CLOCK attempts — giving up; '
+-              'firmware may not accept our payload length.',
+-            );
+-          }
+-        } else {
+-          _clockCorrectTries = 0; // latched — reset for the next drift episode
+-        }
+-      }
++      _log('[SYNC] GET_CLOCK read $dev (wall $wall) — ignored: clock reads '
++          'are untrusted on this firmware; correlation comes from event '
++          'timestamps only.');
+     }
+     if (f.containsKey('range_oldest') && f.containsKey('range_newest')) {
+       final oldest = f['range_oldest'] as int;
+@@ -3054,6 +3045,62 @@ class BleEngine {
    /// verify drift and re-correlate the strap-RTC ↔ wall clock.
    Future<void> getClock() => _send(Cmd.getClock, const <int>[]);
  
@@ -1609,10 +1674,21 @@ index a99d3b3..de5233d 100644
          minute: t % 60,
          route: '/today',
 diff --git a/lib/notify/notification_service.dart b/lib/notify/notification_service.dart
-index 86060d3..5fcb704 100644
+index 86060d3..28e7d78 100644
 --- a/lib/notify/notification_service.dart
 +++ b/lib/notify/notification_service.dart
-@@ -85,28 +85,28 @@ class NotificationService {
+@@ -67,6 +67,10 @@ tz.TZDateTime nextInstanceOf(
+ tz.TZDateTime nextCalendarDay(tz.TZDateTime d) =>
+     tz.TZDateTime(d.location, d.year, d.month, d.day + 1, d.hour, d.minute);
+ 
++/// CM Health Wecker: Klangprofil des Ersatzweckers am Handy. Eigene kleine
++/// Enum statt der UI-Modelle, damit lib/notify keine UI-Schicht importiert.
++enum WakeStyle { loud, vibrate, silent }
++
+ class NotificationService {
+   NotificationService._();
+   static final NotificationService instance = NotificationService._();
+@@ -85,31 +89,64 @@ class NotificationService {
        AndroidNotificationChannel(
      'device_alerts',
      'Device alerts',
@@ -1645,11 +1721,232 @@ index 86060d3..5fcb704 100644
      importance: Importance.defaultImportance,
    );
  
++  // ── CM Health Wecker (v2.1.0): Ersatzwecker-Kanäle ─────────────────────────
++  // Kanäle sind nach Erstellung unveränderlich, deshalb je Modus ein eigener:
++  // laut (Weckton über den ALARM-Audiokanal, umgeht den Klingelton-Lautlos-
++  // Schalter), nur vibrieren, stumm (nur Bildschirmkarte).
++  static const AndroidNotificationChannel _wakeLoudChannel =
++      AndroidNotificationChannel(
++    'cm_wake_loud',
++    'Wecker (laut)',
++    description: 'Ersatzwecker am Handy — klingelt laut',
++    importance: Importance.max,
++    playSound: true,
++    enableVibration: true,
++    audioAttributesUsage: AudioAttributesUsage.alarm,
++  );
++  static const AndroidNotificationChannel _wakeVibrateChannel =
++      AndroidNotificationChannel(
++    'cm_wake_vibrate',
++    'Wecker (vibrieren)',
++    description: 'Ersatzwecker am Handy — nur Vibration',
++    importance: Importance.max,
++    playSound: false,
++    enableVibration: true,
++  );
++  static const AndroidNotificationChannel _wakeSilentChannel =
++      AndroidNotificationChannel(
++    'cm_wake_silent',
++    'Wecker (stumm)',
++    description: 'Ersatzwecker am Handy — nur Bildschirmhinweis',
++    importance: Importance.max,
++    playSound: false,
++    enableVibration: false,
++  );
++
+   // ── Fixed ids: device alerts + scheduled reminders (disjoint low band) ───────
+   static const int idLowBattery = 1001;
+   static const int idCharging = 1002;
+@@ -129,6 +166,12 @@ class NotificationService {
+   /// Reserved for a future server/push layer (unused — app is cloud-free).
+   static const int kServerIdBase = 2000;
+ 
++  /// CM Health Wecker: geplante Ersatzwecker belegen [idWakeBase ..
++  /// idWakeBase+90); der live gezeigte "Band nicht verbunden"-Alarm hat eine
++  /// eigene feste Id. Beide liegen bewusst außerhalb aller anderen Bänder.
++  static const int idWakeBase = 3000;
++  static const int idWakeRinging = 3099;
++
+   AndroidNotificationChannel _channelFor(NotifCategory c) => switch (c) {
+         NotifCategory.health => _healthChannel,
+         NotifCategory.recovery => _recoveryChannel,
+@@ -168,9 +211,109 @@ class NotificationService {
+     await androidImpl?.createNotificationChannel(_healthChannel);
+     await androidImpl?.createNotificationChannel(_recoveryChannel);
+     await androidImpl?.createNotificationChannel(_remindersChannel);
++    await androidImpl?.createNotificationChannel(_wakeLoudChannel);
++    await androidImpl?.createNotificationChannel(_wakeVibrateChannel);
++    await androidImpl?.createNotificationChannel(_wakeSilentChannel);
+     _inited = true;
+   }
+ 
++  // ── CM Health Wecker (v2.1.0) ──────────────────────────────────────────────
++
++  AndroidNotificationChannel _wakeChannel(WakeStyle s) => switch (s) {
++        WakeStyle.loud => _wakeLoudChannel,
++        WakeStyle.vibrate => _wakeVibrateChannel,
++        WakeStyle.silent => _wakeSilentChannel,
++      };
++
++  NotificationDetails _wakeDetails(WakeStyle s) {
++    final ch = _wakeChannel(s);
++    return NotificationDetails(
++      android: AndroidNotificationDetails(
++        ch.id,
++        ch.name,
++        channelDescription: ch.description,
++        importance: Importance.max,
++        priority: Priority.max,
++        icon: '@mipmap/launcher_icon',
++        category: AndroidNotificationCategory.alarm,
++        fullScreenIntent: true,
++        playSound: s == WakeStyle.loud,
++        enableVibration: s != WakeStyle.silent,
++        audioAttributesUsage: AudioAttributesUsage.alarm,
++        ongoing: false,
++        autoCancel: true,
++      ),
++      iOS: const DarwinNotificationDetails(),
++    );
++  }
++
++  /// Exakte "Weckuhr"-Planung (AndroidScheduleMode.alarmClock — Doze-fest,
++  /// höchste Zuverlässigkeitsstufe, die Android kennt). Feuert auch, wenn der
++  /// App-Prozess tot ist — deshalb ist dies das Sicherheitsnetz der WakeEngine.
++  Future<void> scheduleWakeFallback({
++    required int id,
++    required DateTime at,
++    required WakeStyle style,
++    required String title,
++    required String body,
++  }) async {
++    try {
++      if (!await ensurePermission()) return;
++      await _plugin.zonedSchedule(
++        id,
++        title,
++        body,
++        tz.TZDateTime.from(at, tz.local),
++        _wakeDetails(style),
++        androidScheduleMode: AndroidScheduleMode.alarmClock,
++        uiLocalNotificationDateInterpretation:
++            UILocalNotificationDateInterpretation.absoluteTime,
++        payload: 'today',
++      );
++    } catch (_) {/* Wecken selbst übernimmt die WakeEngine — best effort */}
++  }
++
++  /// Sofortiger Ersatzwecker ("Band nicht verbunden — Handy übernimmt").
++  Future<void> showWakeNow({
++    required int id,
++    required WakeStyle style,
++    required String title,
++    required String body,
++  }) async {
++    try {
++      if (!await ensurePermission()) return;
++      await _plugin.show(id, title, body, _wakeDetails(style),
++          payload: 'today');
++    } catch (_) {}
++  }
++
++  Future<void> cancelWake(int id) async {
++    try {
++      await _plugin.cancel(id);
++    } catch (_) {}
++  }
++
++  /// Alle geplanten Ersatzwecker (Band [idWakeBase..idWakeBase+90)) aufräumen —
++  /// die WakeEngine plant sie bei jeder Änderung komplett neu.
++  Future<void> cancelWakeBand() async {
++    for (var i = 0; i < 90; i++) {
++      await cancelWake(idWakeBase + i);
++    }
++  }
++
++  /// Android 12+: exakte Alarme brauchen ggf. eine Sondergenehmigung. Mit der
++  /// Manifest-Berechtigung USE_EXACT_ALARM (Wecker-App-Klasse) ist sie
++  /// automatisch erteilt; dieser Aufruf fängt den Rest ab. Best effort.
++  Future<void> ensureExactAlarmPermission() async {
++    try {
++      final androidImpl = _plugin.resolvePlatformSpecificImplementation<
++          AndroidFlutterLocalNotificationsPlugin>();
++      if (androidImpl == null) return;
++      final ok = await androidImpl.canScheduleExactNotifications() ?? true;
++      if (!ok) await androidImpl.requestExactAlarmsPermission();
++    } catch (_) {}
++  }
++
+   void _onTap(NotificationResponse r) {
+     final route = r.payload;
+     if (route != null && route.isNotEmpty) _taps.add(route);
 diff --git a/lib/state/app_state.dart b/lib/state/app_state.dart
-index dbca2b1..678ca02 100644
+index dbca2b1..2ae8ee3 100644
 --- a/lib/state/app_state.dart
 +++ b/lib/state/app_state.dart
-@@ -1308,7 +1308,7 @@ class AppState extends ChangeNotifier {
+@@ -72,6 +72,7 @@ import '../live/breathing_live_activity.dart';
+ import '../notify/device_alerts.dart';
+ import '../notify/notification_relay.dart';
+ import '../notify/notification_service.dart';
++import '../notify/wake_engine.dart';
+ import '../notify/tap_router.dart';
+ import '../notify/water_buzzer.dart';
+ import '../sync/background_sync.dart' show checkSyncStaleness;
+@@ -157,6 +158,7 @@ class AppState extends ChangeNotifier {
+   /// Band-gesture → action mapping (double-tap, etc.). Exposed for the settings UI.
+   final GestureSettings gestureSettings = GestureSettings();
+   late final GestureDispatcher _gestureDispatcher;
++  late final WakeEngine wakeEngine; // CM Health v2.1.0 Handy-Wecker
+ 
+   /// Relay selected phone-app notifications to the strap as a buzz (Android only).
+   /// Exposed for the settings UI; buzzes via the live BLE engine when connected.
+@@ -962,6 +964,18 @@ class AppState extends ChangeNotifier {
+       onMarkMoment: _markMomentFromGesture,
+       onWorkoutToggle: _toggleWorkoutFromGesture,
+     );
++    // CM Health v2.1.0: Handy-Wecker-Engine — das Handy plant, das Band
++    // vibriert (siehe lib/notify/wake_engine.dart für die Architektur).
++    wakeEngine = WakeEngine(
++      buzz: (p) async {
++        try {
++          await engine.buzzPattern(p);
++        } catch (_) {/* Band gerade weg — die Schleife versucht es erneut */}
++      },
++      isBandConnected: () => isConnected,
++      log: _log,
++      onChanged: notifyListeners,
++    );
+     engine = BleEngine(
+       onRecord: _onRecord,
+       onState: _onEngineState,
+@@ -1045,6 +1059,18 @@ class AppState extends ChangeNotifier {
+       onMarkMoment: _markMomentFromGesture,
+       onWorkoutToggle: _toggleWorkoutFromGesture,
+     );
++    // CM Health v2.1.0: Handy-Wecker-Engine — das Handy plant, das Band
++    // vibriert (siehe lib/notify/wake_engine.dart für die Architektur).
++    wakeEngine = WakeEngine(
++      buzz: (p) async {
++        try {
++          await engine.buzzPattern(p);
++        } catch (_) {/* Band gerade weg — die Schleife versucht es erneut */}
++      },
++      isBandConnected: () => isConnected,
++      log: _log,
++      onChanged: notifyListeners,
++    );
+     this.engine = engine ??
+         BleEngine(
+           onRecord: _onRecord,
+@@ -1095,6 +1121,7 @@ class AppState extends ChangeNotifier {
+     _stopReconnectSupervisor();
+     _alarmGraceTimer?.cancel();
+     _alarmGraceTimer = null;
++    wakeEngine.dispose(); // CM Health v2.1.0 — Weck-Timer einsammeln
+     _spotTimer?.cancel();
+     _spotTimer = null;
+     _breathingRecomputeTimer?.cancel();
+@@ -1308,7 +1335,7 @@ class AppState extends ChangeNotifier {
                ?.toDouble();
            if (tstSec != null && tstSec > 0) {
              final m = (tstSec / 60).round();
@@ -1658,7 +1955,7 @@ index dbca2b1..678ca02 100644
            }
          }
        } catch (_) {
-@@ -1328,8 +1328,8 @@ class AppState extends ChangeNotifier {
+@@ -1328,8 +1355,8 @@ class AppState extends ChangeNotifier {
            dedupeKey: '$dayId:recovery_ready',
            category: NotifCategory.recovery,
            priority: NotifPriority.normal,
@@ -1669,7 +1966,7 @@ index dbca2b1..678ca02 100644
            date: dayId,
            route: '/today',
          ),
-@@ -1459,9 +1459,9 @@ class AppState extends ChangeNotifier {
+@@ -1459,9 +1486,9 @@ class AppState extends ChangeNotifier {
            dedupeKey: '$date:step_goal',
            category: NotifCategory.reminders,
            priority: NotifPriority.low,
@@ -1681,7 +1978,7 @@ index dbca2b1..678ca02 100644
            date: date,
            route: '/today',
          ),
-@@ -1504,9 +1504,9 @@ class AppState extends ChangeNotifier {
+@@ -1504,9 +1531,9 @@ class AppState extends ChangeNotifier {
            dedupeKey: '$today:posture:${nowMs ~/ (2 * 60 * 60 * 1000)}',
            category: NotifCategory.reminders,
            priority: NotifPriority.low,
@@ -1693,7 +1990,7 @@ index dbca2b1..678ca02 100644
            date: today,
            route: '/today',
          ),
-@@ -1543,9 +1543,9 @@ class AppState extends ChangeNotifier {
+@@ -1543,9 +1570,9 @@ class AppState extends ChangeNotifier {
        await NotificationService.instance.scheduleOnce(
          id: NotificationService.idStillness,
          category: NotifCategory.reminders,
@@ -1705,7 +2002,7 @@ index dbca2b1..678ca02 100644
          at: at,
          route: '/today',
        );
-@@ -1568,7 +1568,7 @@ class AppState extends ChangeNotifier {
+@@ -1568,7 +1595,7 @@ class AppState extends ChangeNotifier {
    Future<int> reanalyzeAll() async {
      if (reanalyzing) return 0;
      reanalyzing = true;
@@ -1714,7 +2011,7 @@ index dbca2b1..678ca02 100644
      notifyListeners();
      try {
        final n = await _derive.run(
-@@ -1578,7 +1578,7 @@ class AppState extends ChangeNotifier {
+@@ -1578,7 +1605,7 @@ class AppState extends ChangeNotifier {
          // Per-day callback: surface progress AND refresh the UI so each real day's
          // metrics appear as soon as it's derived (Today fills in one day at a time).
          onDayDone: (day, index, total) async {
@@ -1723,7 +2020,7 @@ index dbca2b1..678ca02 100644
            if (index == total || index == 1 || index % 3 == 0) {
              dbCounts = await LocalDb.counts();
              notifyListeners();
-@@ -1675,7 +1675,7 @@ class AppState extends ChangeNotifier {
+@@ -1675,7 +1702,7 @@ class AppState extends ChangeNotifier {
      reanalyzing = true;
      final ordered = days.toList()..sort();
      reanalyzeProgress =
@@ -1732,7 +2029,7 @@ index dbca2b1..678ca02 100644
      notifyListeners();
      try {
        final n = await _derive.runDays(
-@@ -1683,7 +1683,7 @@ class AppState extends ChangeNotifier {
+@@ -1683,7 +1710,7 @@ class AppState extends ChangeNotifier {
          days,
          force: true,
          onDayDone: (day, index, total) async {
@@ -1741,7 +2038,33 @@ index dbca2b1..678ca02 100644
            if (index == total || index == 1 || index % 3 == 0) {
              dbCounts = await LocalDb.counts();
              notifyListeners();
-@@ -2547,7 +2547,7 @@ class AppState extends ChangeNotifier {
+@@ -1754,6 +1781,11 @@ class AppState extends ChangeNotifier {
+   void _onLiveEvent(int id, int ts, String hex) {
+     LocalDb.insertEvent(id, ts, hex);
+     _handleAlarmEvent(id, ts);
++    // CM Health v2.1.0: Doppeltipp aufs Band (Event 14) schaltet einen gerade
++    // laufenden Wecker ab — VOR dem Gesten-Mapping, damit das Wecken immer
++    // gewinnt (eine konfigurierte Doppeltipp-Aktion soll den Weckvorgang
++    // nicht zusätzlich auslösen; die Recency prüft die Engine selbst).
++    if (id == 14) wakeEngine.onDoubleTap(ts);
+     _gestureDispatcher.onEvent(id, ts, hex);
+   }
+ 
+@@ -1777,7 +1809,12 @@ class AppState extends ChangeNotifier {
+         await LocalDb.getCursorInt('rec_ts_hw') ?? lastSynced?.tsEpoch;
+     dbCounts = await LocalDb.counts();
+     await LocalDb.refreshComputeFreshness();
+-    _savedAlarm = (await SharedPreferences.getInstance()).getInt('alarm_epoch');
++    // CM Health v2.1.0: Der band-interne Wecker ist abgeschafft (die Firmware
++    // hat ihn nie zuverlässig gefeuert) — Altbestand verwerfen, damit die alte
++    // Bestätigungs-Maschine nie wieder anläuft. Wecken übernimmt die WakeEngine.
++    await (await SharedPreferences.getInstance()).remove('alarm_epoch');
++    _savedAlarm = null;
++    await wakeEngine.init();
+     // Band-gesture mapping: load the saved action + query native capabilities so the
+     // settings UI knows what this platform supports. Best-effort, non-blocking.
+     unawaited(gestureSettings.bootstrap());
+@@ -2547,7 +2584,7 @@ class AppState extends ChangeNotifier {
          NotificationEvent(
            dedupeKey: '$day:battery_overnight',
            category: NotifCategory.device,
@@ -1750,7 +2073,7 @@ index dbca2b1..678ca02 100644
            body: BatteryForecaster.describe(f, wakeAt: wakeAt),
            date: day,
            route: '/profile',
-@@ -3006,9 +3006,21 @@ class AppState extends ChangeNotifier {
+@@ -3006,9 +3043,21 @@ class AppState extends ChangeNotifier {
    // band DID latch the alarm), there is no retry/re-poll for it and the
    // GET_ALARM readback fallback is parked (unconfirmed format), so the app had
    // no way to ever clear the "unconfirmed" warning short of the user
@@ -1775,7 +2098,7 @@ index dbca2b1..678ca02 100644
  
    /// The strap emitted ALARM_SET (event 56) — the alarm is confirmed armed.
    bool get alarmConfirmed => _alarm.confirmed;
-@@ -3027,9 +3039,32 @@ class AppState extends ChangeNotifier {
+@@ -3027,9 +3076,32 @@ class AppState extends ChangeNotifier {
    int? get alarmFiredAt => _alarm.firedAt;
  
    Future<void> setAlarm(DateTime when) async {
@@ -1809,7 +2132,7 @@ index dbca2b1..678ca02 100644
      // Pass the DateTime through so the engine computes REAL sub-seconds for the
      // rich 20-byte firing form (a hardcoded 0 subsec would still fire, but the
      // engine owns the exact on-wire layout).
-@@ -3040,12 +3075,12 @@ class AppState extends ChangeNotifier {
+@@ -3040,12 +3112,12 @@ class AppState extends ChangeNotifier {
        // strap to confirm" that can never fire. Surface it so the UI reflects
        // "couldn't send" (the coach/profile callers snackbar on a throw).
        _log('[alarm] arm write FAILED — not persisting; alarm not set.');
@@ -1824,7 +2147,7 @@ index dbca2b1..678ca02 100644
      final prefs = await SharedPreferences.getInstance();
      await prefs.setInt('alarm_epoch', epoch);
      // Nudge the UI once the grace window elapses so an unconfirmed alarm flips to
-@@ -3064,52 +3099,75 @@ class AppState extends ChangeNotifier {
+@@ -3064,52 +3136,75 @@ class AppState extends ChangeNotifier {
      );
    }
  
@@ -1911,7 +2234,7 @@ index dbca2b1..678ca02 100644
      await engine.buzzPattern(pattern);
    }
  
-@@ -3131,7 +3189,7 @@ class AppState extends ChangeNotifier {
+@@ -3131,7 +3226,7 @@ class AppState extends ChangeNotifier {
    Future<int?> readBandRssi() => engine.readRssi();
  
    Future<void> disableAlarm() async {
@@ -1920,7 +2243,7 @@ index dbca2b1..678ca02 100644
      await engine.disableAlarm();
      _savedAlarm = null;
      device.alarmEpoch = null;
-@@ -3151,6 +3209,13 @@ class AppState extends ChangeNotifier {
+@@ -3151,6 +3246,13 @@ class AppState extends ChangeNotifier {
    /// the protocol EventId names (strapDrivenAlarmSet == 56, …); the pure state
    /// machine matches the raw ids so it stays dependency-free.
    void _handleAlarmEvent(int id, int ts) {
@@ -1934,7 +2257,7 @@ index dbca2b1..678ca02 100644
      final effect = _alarm.onEvent(id, DateTime.now().millisecondsSinceEpoch);
      if (effect == null) return;
      switch (effect) {
-@@ -3199,14 +3264,36 @@ class AppState extends ChangeNotifier {
+@@ -3199,14 +3301,36 @@ class AppState extends ChangeNotifier {
      }());
    }
  
@@ -1973,7 +2296,7 @@ index dbca2b1..678ca02 100644
          date: todayLabel(),
          route: '/today',
        ));
-@@ -3216,7 +3303,7 @@ class AppState extends ChangeNotifier {
+@@ -3216,7 +3340,7 @@ class AppState extends ChangeNotifier {
    }
  
    Future<void> renameStrap(String name) async {
@@ -1982,7 +2305,7 @@ index dbca2b1..678ca02 100644
      await engine.setStrapName(name);
      device.strapName = name; // optimistic
      await engine.getStrapName();
-@@ -3760,7 +3847,7 @@ class AppState extends ChangeNotifier {
+@@ -3760,7 +3884,7 @@ class AppState extends ChangeNotifier {
    Future<void> startSpotCheck() async {
      if (spotActive) return;
      if (!isConnected) {
@@ -1991,7 +2314,7 @@ index dbca2b1..678ca02 100644
        notifyListeners();
        return;
      }
-@@ -3822,12 +3909,12 @@ class AppState extends ChangeNotifier {
+@@ -3822,12 +3946,12 @@ class AppState extends ChangeNotifier {
            : await repo!.spotCheck(frames);
        spotResult = res;
        if (res == null) {
@@ -2007,7 +2330,7 @@ index dbca2b1..678ca02 100644
      } finally {
        spotActive = false;
        notifyListeners();
-@@ -3893,7 +3980,7 @@ class AppState extends ChangeNotifier {
+@@ -3893,7 +4017,7 @@ class AppState extends ChangeNotifier {
    }) async {
      if (breathingActive) return;
      if (!isConnected) {
@@ -2016,7 +2339,7 @@ index dbca2b1..678ca02 100644
        notifyListeners();
        return;
      }
-@@ -4568,7 +4655,7 @@ class AppState extends ChangeNotifier {
+@@ -4568,7 +4692,7 @@ class AppState extends ChangeNotifier {
        } catch (_) {
          /* fresh day / seam not implemented — start clean */
        }

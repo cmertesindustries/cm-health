@@ -1625,19 +1625,21 @@ index 322d0f2..8c98586 100644
          ),
        ],
 diff --git a/lib/ui/today/today_screen.dart b/lib/ui/today/today_screen.dart
-index cbd251d..b2b526e 100644
+index cbd251d..6aa4029 100644
 --- a/lib/ui/today/today_screen.dart
 +++ b/lib/ui/today/today_screen.dart
-@@ -30,6 +30,8 @@ import '../coach/coach_screen.dart';
+@@ -30,6 +30,10 @@ import '../coach/coach_screen.dart';
  import '../profile/profile_screen.dart';
  import '../screens/screens.dart';
  import 'step_goal_screen.dart';
++import '../alarm/alarm_screen.dart';
++import 'alarm_card.dart';
 +import 'band_status_card.dart';
 +import '../timer/interval_timer_screen.dart';
  import '../journey/journey_screen.dart';
  import '../stress/stress_screen.dart';
  import '../records/records_screen.dart';
-@@ -186,7 +188,8 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -186,7 +190,8 @@ class _TodayScreenState extends State<TodayScreen>
      // the REBUILD TRIGGER is scoped. liveSteps is included (already rate-
      // limited to ~1/s at the source) so the steps tile doesn't freeze mid-walk
      // while waiting on an unrelated dbCounts change.
@@ -1647,7 +1649,7 @@ index cbd251d..b2b526e 100644
        (a) => (
          a.dbCounts,
          a.reanalyzing,
-@@ -196,6 +199,9 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -196,6 +201,9 @@ class _TodayScreenState extends State<TodayScreen>
          // The steps tile stops adding the band's live count the moment the
          // phone owns the day, so a flip has to rebuild it.
          a.todayStepsFromPhone,
@@ -1657,7 +1659,7 @@ index cbd251d..b2b526e 100644
        ),
      );
      final app = context.read<AppState>();
-@@ -209,7 +215,7 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -209,7 +217,7 @@ class _TodayScreenState extends State<TodayScreen>
          children: [
            Flexible(
              child: Text(
@@ -1666,7 +1668,7 @@ index cbd251d..b2b526e 100644
                style: AppText.h1.copyWith(
                  fontWeight: FontWeight.w800,
                  letterSpacing: -0.9,
-@@ -229,6 +235,11 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -229,6 +237,16 @@ class _TodayScreenState extends State<TodayScreen>
            OsIcon.edit,
            onTap: () => _push(() => const JournalScreen()),
          ),
@@ -1675,20 +1677,28 @@ index cbd251d..b2b526e 100644
 +          OsIcon.hiit,
 +          onTap: () => _push(() => const IntervalTimerScreen()),
 +        ),
++        // CM Health v2.1.0: Wecker.
++        RoundIconButton(
++          OsIcon.alarm,
++          onTap: () => _push(() => const AlarmScreen()),
++        ),
          // Profile / settings.
          RoundIconButton(
            OsIcon.profile,
-@@ -261,6 +272,9 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -261,6 +279,12 @@ class _TodayScreenState extends State<TodayScreen>
              // OTA update prompt + admin alert banner (self-hiding).
              const StatusBanner(),
              const SizedBox(height: Sp.x2),
 +            // CM Health: band battery + live heart rate, always at the top.
 +            const BandStatusCard(),
 +            const SizedBox(height: Sp.x2),
++            // CM Health v2.1.0: nächster Wecker / Stopp-Karte (selbst-versteckend).
++            const AlarmCard(),
++            const SizedBox(height: Sp.x2),
              if (phase == LoadPhase.loading)
                ..._skeleton()
              else if (phase == LoadPhase.empty)
-@@ -268,9 +282,9 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -268,9 +292,9 @@ class _TodayScreenState extends State<TodayScreen>
              else if (phase == LoadPhase.error)
                StateCard(
                  icon: OsIcon.sync,
@@ -1701,7 +1711,7 @@ index cbd251d..b2b526e 100644
                  onAction: () => refresh(),
                )
              else
-@@ -383,6 +397,9 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -383,6 +407,9 @@ class _TodayScreenState extends State<TodayScreen>
              liveSteps: context.read<AppState>().todayStepsFromPhone
                  ? 0
                  : context.read<AppState>().liveSteps,
@@ -1711,7 +1721,7 @@ index cbd251d..b2b526e 100644
              onOpen: _open,
              hasAiBriefing: hasAiBriefing,
              aiBriefing: hasAiBriefing ? BriefingStore.read(period) : null,
-@@ -430,11 +447,11 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -430,11 +457,11 @@ class _TodayScreenState extends State<TodayScreen>
          } else {
            showInfoSheet(
              context,
@@ -1727,7 +1737,7 @@ index cbd251d..b2b526e 100644
            );
          }
        case 'sleep':
-@@ -459,19 +476,19 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -459,19 +486,19 @@ class _TodayScreenState extends State<TodayScreen>
    /// Illness / overtraining early-warning — one chip + the note behind (i).
    Widget _alertChipRow(Map<String, dynamic> a) {
      final kind = (a['kind'] ?? '').toString();
@@ -1752,7 +1762,7 @@ index cbd251d..b2b526e 100644
          ),
          const Spacer(),
        ],
-@@ -487,13 +504,13 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -487,13 +514,13 @@ class _TodayScreenState extends State<TodayScreen>
        child: ListRow(
          icon: OsIcon.today,
          iconColor: AppColors.accent,
@@ -1769,7 +1779,7 @@ index cbd251d..b2b526e 100644
                  tone: ChipTone.accent,
                ),
          onTap: () => _push(() => CoachScreen(coach: coach)),
-@@ -523,15 +540,15 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -523,15 +550,15 @@ class _TodayScreenState extends State<TodayScreen>
              children: [
                const OsAppIcon(OsIcon.heartRate, size: 34),
                const SizedBox(width: Sp.x2),
@@ -1788,7 +1798,7 @@ index cbd251d..b2b526e 100644
              style: AppText.body,
            ),
            if (hasData) ...[
-@@ -573,13 +590,13 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -573,13 +600,13 @@ class _TodayScreenState extends State<TodayScreen>
                ),
              ),
              const SizedBox(height: Sp.x4),
@@ -1805,7 +1815,7 @@ index cbd251d..b2b526e 100644
                style: AppText.bodySoft,
                textAlign: TextAlign.center,
              ),
-@@ -594,18 +611,18 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -594,18 +621,18 @@ class _TodayScreenState extends State<TodayScreen>
            final first = snap.data?.$1;
            final last = snap.data?.$2;
            final message = first == null
@@ -1830,7 +1840,7 @@ index cbd251d..b2b526e 100644
              onAction: () => app.reanalyzeAll(),
            );
          },
-@@ -613,19 +630,19 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -613,19 +640,19 @@ class _TodayScreenState extends State<TodayScreen>
      }
      return const StateCard(
        icon: OsIcon.wear,
@@ -1858,7 +1868,7 @@ index cbd251d..b2b526e 100644
    ];
  
    String _fmtCollectionDate(int epochSec) {
-@@ -659,30 +676,30 @@ class _TodayScreenState extends State<TodayScreen>
+@@ -659,30 +686,30 @@ class _TodayScreenState extends State<TodayScreen>
      if (stale &&
          (captureActive || deriveRunning || pendingLight || pendingHeavy)) {
        label =
@@ -1897,7 +1907,7 @@ index cbd251d..b2b526e 100644
          : '';
      return ProCard(
        padding: const EdgeInsets.all(Sp.x4),
-@@ -726,6 +743,11 @@ class TodayVitals extends StatelessWidget {
+@@ -726,6 +753,11 @@ class TodayVitals extends StatelessWidget {
    /// Steps from the in-flight live session, not yet folded into the day metric.
    final int liveSteps;
  
@@ -1909,7 +1919,7 @@ index cbd251d..b2b526e 100644
    /// Tap-through router: readiness | sleep | heart | body | activity | wear |
    /// stress | oxygen | records.
    final void Function(String id) onOpen;
-@@ -758,6 +780,7 @@ class TodayVitals extends StatelessWidget {
+@@ -758,6 +790,7 @@ class TodayVitals extends StatelessWidget {
      this.sparks = const {},
      this.stepsWeek = const [],
      this.liveSteps = 0,
@@ -1917,7 +1927,7 @@ index cbd251d..b2b526e 100644
      required this.onOpen,
      this.hasAiBriefing = false,
      this.aiBriefing,
-@@ -850,14 +873,14 @@ class TodayVitals extends StatelessWidget {
+@@ -850,14 +883,14 @@ class TodayVitals extends StatelessWidget {
              children: [
                ListRow(
                  icon: OsIcon.wear,
@@ -1934,7 +1944,7 @@ index cbd251d..b2b526e 100644
                  onTap: () => onOpen('records'),
                ),
              ],
-@@ -874,16 +897,16 @@ class TodayVitals extends StatelessWidget {
+@@ -874,16 +907,16 @@ class TodayVitals extends StatelessWidget {
      final building = status.overnightBuilding || status.activityBuilding;
      if (!building && !status.showingPriorOvernight) return null;
      final label = status.overnightBuilding
@@ -1958,7 +1968,7 @@ index cbd251d..b2b526e 100644
      return Row(
        children: [
          StatusChip(label, icon: OsIcon.activity,
-@@ -915,7 +938,7 @@ class TodayVitals extends StatelessWidget {
+@@ -915,7 +948,7 @@ class TodayVitals extends StatelessWidget {
              const SizedBox(width: Sp.x2),
              Expanded(
                child: Text(
@@ -1967,7 +1977,7 @@ index cbd251d..b2b526e 100644
                  style: AppText.bodySoft.copyWith(
                    color: AppColors.onSurfaceFaint,
                  ),
-@@ -930,8 +953,8 @@ class TodayVitals extends StatelessWidget {
+@@ -930,8 +963,8 @@ class TodayVitals extends StatelessWidget {
      final bullets = _briefingBullets(b.breakdownMd);
      return Disclosure(
        summary: b.oneLiner,
@@ -1978,7 +1988,7 @@ index cbd251d..b2b526e 100644
        child: Column(
          crossAxisAlignment: CrossAxisAlignment.start,
          mainAxisSize: MainAxisSize.min,
-@@ -964,7 +987,7 @@ class TodayVitals extends StatelessWidget {
+@@ -964,7 +997,7 @@ class TodayVitals extends StatelessWidget {
                child: Pressable(
                  onTap: onOpenAiBreakdown,
                  child: Text(
@@ -1987,7 +1997,7 @@ index cbd251d..b2b526e 100644
                    style: AppText.captionMuted.copyWith(
                      color: AppColors.accent,
                      fontWeight: FontWeight.w700,
-@@ -999,9 +1022,9 @@ class TodayVitals extends StatelessWidget {
+@@ -999,9 +1032,9 @@ class TodayVitals extends StatelessWidget {
      final (word, wordIcon) = score == null
          ? (null, null)
          : switch (readinessBand(score)) {
@@ -2000,7 +2010,7 @@ index cbd251d..b2b526e 100644
            };
  
      // Honest "still learning you" center: nights-to-go over a dashed
-@@ -1014,12 +1037,12 @@ class TodayVitals extends StatelessWidget {
+@@ -1014,12 +1047,12 @@ class TodayVitals extends StatelessWidget {
          children: [
            Text('$left', style: AppText.display.copyWith(fontSize: 40)),
            Text(
@@ -2015,7 +2025,7 @@ index cbd251d..b2b526e 100644
              style: AppText.caption.copyWith(
                color: AppColors.accent,
                fontWeight: FontWeight.w800,
-@@ -1031,7 +1054,7 @@ class TodayVitals extends StatelessWidget {
+@@ -1031,7 +1064,7 @@ class TodayVitals extends StatelessWidget {
  
      return OrbitScore(
        score: score,
@@ -2024,7 +2034,7 @@ index cbd251d..b2b526e 100644
        word: word,
        wordIcon: wordIcon,
        color: accent,
-@@ -1074,10 +1097,10 @@ class TodayVitals extends StatelessWidget {
+@@ -1074,10 +1107,10 @@ class TodayVitals extends StatelessWidget {
          context,
          title: 'HRV (RMSSD)',
          body:
@@ -2038,7 +2048,7 @@ index cbd251d..b2b526e 100644
        ),
        child: Column(
          crossAxisAlignment: CrossAxisAlignment.start,
-@@ -1126,14 +1149,14 @@ class TodayVitals extends StatelessWidget {
+@@ -1126,14 +1159,14 @@ class TodayVitals extends StatelessWidget {
          crossAxisAlignment: CrossAxisAlignment.start,
          mainAxisSize: MainAxisSize.min,
          children: [
@@ -2055,7 +2065,7 @@ index cbd251d..b2b526e 100644
              captionAccent: true,
            ),
            if (_spark('resting_hr') != null) ...[
-@@ -1159,7 +1182,9 @@ class TodayVitals extends StatelessWidget {
+@@ -1159,7 +1192,9 @@ class TodayVitals extends StatelessWidget {
  
    Widget _stepsTile() {
      final base = t.steps.isEmpty ? 0 : t.steps.value!.round();
@@ -2066,7 +2076,7 @@ index cbd251d..b2b526e 100644
      final goal = t.stepGoal ?? StepGoalScreen.defaultGoal;
      return BentoTile(
        tone: BentoTone.soft,
-@@ -1179,11 +1204,11 @@ class TodayVitals extends StatelessWidget {
+@@ -1179,11 +1214,11 @@ class TodayVitals extends StatelessWidget {
            // Same tag, same colour as the steps detail screen — `Tag`'s default
            // is the warning amber, which reads as a caution rather than a
            // statement of confidence.
@@ -2080,7 +2090,7 @@ index cbd251d..b2b526e 100644
            ),
            if (steps > 0) ...[
              const SizedBox(height: Sp.x3),
-@@ -1208,12 +1233,12 @@ class TodayVitals extends StatelessWidget {
+@@ -1208,12 +1243,12 @@ class TodayVitals extends StatelessWidget {
          crossAxisAlignment: CrossAxisAlignment.start,
          mainAxisSize: MainAxisSize.min,
          children: [
@@ -2095,7 +2105,7 @@ index cbd251d..b2b526e 100644
            ),
          ],
        ),
-@@ -1225,11 +1250,13 @@ class TodayVitals extends StatelessWidget {
+@@ -1225,11 +1260,13 @@ class TodayVitals extends StatelessWidget {
    /// so it fills even before today's series row exists.
    Widget? _weekRings() {
      final base = t.steps.isEmpty ? 0 : t.steps.value!.round();
@@ -2110,7 +2120,7 @@ index cbd251d..b2b526e 100644
      );
      if (ring.values.whereType<double>().isEmpty) return null;
      return BentoTile(
-@@ -1239,7 +1266,7 @@ class TodayVitals extends StatelessWidget {
+@@ -1239,7 +1276,7 @@ class TodayVitals extends StatelessWidget {
          crossAxisAlignment: CrossAxisAlignment.start,
          mainAxisSize: MainAxisSize.min,
          children: [
@@ -2119,7 +2129,7 @@ index cbd251d..b2b526e 100644
            const SizedBox(height: Sp.x3),
            RingWeek(
              values: ring.values,
-@@ -1292,7 +1319,7 @@ class _QuickStatsRow extends StatelessWidget {
+@@ -1292,7 +1329,7 @@ class _QuickStatsRow extends StatelessWidget {
      final items = [
        (
          icon: OsIcon.sleep,
@@ -2128,7 +2138,7 @@ index cbd251d..b2b526e 100644
          value: t.sleepDuration.isEmpty
              ? null
              : '${t.sleepDuration.value!.toInt() ~/ 60}h '
-@@ -1302,14 +1329,14 @@ class _QuickStatsRow extends StatelessWidget {
+@@ -1302,14 +1339,14 @@ class _QuickStatsRow extends StatelessWidget {
        ),
        (
          icon: OsIcon.heart,
@@ -2145,7 +2155,7 @@ index cbd251d..b2b526e 100644
          value: t.strain.isEmpty ? null : t.strain.value!.toStringAsFixed(1),
          color: DomainAccent.strain,
          route: 'body',
-@@ -1467,7 +1494,7 @@ class _RecoveryStoryState extends State<_RecoveryStory>
+@@ -1467,7 +1504,7 @@ class _RecoveryStoryState extends State<_RecoveryStory>
      final panels = <Widget Function()>[];
      // 1. Recovered.
      panels.add(() => _panel(
@@ -2154,7 +2164,7 @@ index cbd251d..b2b526e 100644
            gauge: ArcGauge(
              value: (widget.recoveredPct / 100).clamp(0.0, 1.0),
              color: AppColors.glow1,
-@@ -1478,17 +1505,17 @@ class _RecoveryStoryState extends State<_RecoveryStory>
+@@ -1478,17 +1515,17 @@ class _RecoveryStoryState extends State<_RecoveryStory>
                  style: AppText.display.copyWith(color: Colors.white)),
            ),
            line: widget.recoveredPct >= 66
@@ -2176,7 +2186,7 @@ index cbd251d..b2b526e 100644
              gauge: ArcGauge(
                value: need == 0 ? 0 : (slept / need).clamp(0.0, 1.0),
                color: AppColors.loadDetraining,
-@@ -1497,7 +1524,7 @@ class _RecoveryStoryState extends State<_RecoveryStory>
+@@ -1497,7 +1534,7 @@ class _RecoveryStoryState extends State<_RecoveryStory>
                center: Text(hm(slept),
                    style: AppText.metricSm.copyWith(color: Colors.white)),
              ),
@@ -2185,7 +2195,7 @@ index cbd251d..b2b526e 100644
            ));
      }
      // 3. HRV.
-@@ -1517,14 +1544,14 @@ class _RecoveryStoryState extends State<_RecoveryStory>
+@@ -1517,14 +1554,14 @@ class _RecoveryStoryState extends State<_RecoveryStory>
                  ? null
                  : BaselineDeltaChip(widget.hrvDelta, unit: 'ms'),
              line: widget.hrvDelta == null
@@ -2203,7 +2213,7 @@ index cbd251d..b2b526e 100644
              gauge: const AppIcon(OsIcon.ai, size: 56, color: Colors.white),
              line: widget.planTitle!,
              sub: widget.planBody,
-@@ -1690,7 +1717,7 @@ class _CollectionProgressBar extends StatelessWidget {
+@@ -1690,7 +1727,7 @@ class _CollectionProgressBar extends StatelessWidget {
          ),
          const SizedBox(height: Sp.x2),
          Text(

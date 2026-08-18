@@ -1,0 +1,833 @@
+diff --git a/lib/models/cm_alarm.dart b/lib/models/cm_alarm.dart
+new file mode 100644
+index 0000000..8e9b84c
+--- /dev/null
++++ b/lib/models/cm_alarm.dart
+@@ -0,0 +1,161 @@
++// CM Health Wecker (v2.1.0) — Datenmodell + Persistenz + Zeitrechnung.
++//
++// DESIGN: Das Handy hält die Weckzeiten, nicht das Band. Die Band-Firmware
++// hat sich als strukturell unzuverlässig erwiesen (defektes Uhr-Auslesen,
++// Fire-once-Verhalten, häufige interne Neustarts, die Uhr und Weckerspeicher
++// wegwerfen — 692 dokumentierte Zähler-Rücksprünge in einem einzigen Log).
++// Deshalb wird der Wecker hier wie in einer Standard-Wecker-App am Telefon
++// geplant; zur Weckzeit schickt die WakeEngine dem Band lediglich wiederholt
++// den direkten Vibrationsbefehl (denselben, den die Test-Vibration nutzt).
++//
++// Haptik: Diese Band-Firmware kennt genau DREI wirksame Effekte (0, 1, 2) —
++// 3–7 tun nichts, und komponierte Impulsfolgen fühlen sich alle gleich an
++// (Feldtest 18.08.2026). Deshalb ist das Vibrationsmuster hier schlicht die
++// Effektnummer 0/1/2.
++
++import 'dart:convert';
++
++import 'package:shared_preferences/shared_preferences.dart';
++
++/// Ersatzwecker-Verhalten am Handy, wenn das Band nicht (rechtzeitig)
++/// abgeschaltet wird oder gar nicht verbunden ist.
++enum FallbackMode { loud, vibrate, silent }
++
++String fallbackModeLabel(FallbackMode m) => switch (m) {
++      FallbackMode.loud => 'Laut',
++      FallbackMode.vibrate => 'Nur vibrieren',
++      FallbackMode.silent => 'Stumm',
++    };
++
++class CmAlarm {
++  String id;
++  String name;
++  int hour; // 0–23
++  int minute; // 0–59
++  /// DateTime.monday(1) … DateTime.sunday(7). Leer = Einmal-Wecker: feuert
++  /// beim nächsten Erreichen der Uhrzeit und schaltet sich danach selbst ab.
++  Set<int> weekdays;
++  bool enabled;
++  int bandPattern; // Firmware-Effekt 0, 1 oder 2
++  bool fallbackEnabled;
++  FallbackMode fallbackMode;
++
++  CmAlarm({
++    required this.id,
++    required this.name,
++    required this.hour,
++    required this.minute,
++    Set<int>? weekdays,
++    this.enabled = true,
++    this.bandPattern = 1,
++    this.fallbackEnabled = true,
++    this.fallbackMode = FallbackMode.loud,
++  }) : weekdays = weekdays ?? <int>{};
++
++  bool get isOneShot => weekdays.isEmpty;
++
++  /// Nächster Auslösezeitpunkt strikt NACH [after] (lokale Zeit).
++  DateTime nextOccurrence(DateTime after) {
++    var candidate =
++        DateTime(after.year, after.month, after.day, hour, minute);
++    for (var i = 0; i < 8; i++) {
++      final ok = candidate.isAfter(after) &&
++          (weekdays.isEmpty || weekdays.contains(candidate.weekday));
++      if (ok) return candidate;
++      final nextDay = candidate.add(const Duration(hours: 36));
++      candidate =
++          DateTime(nextDay.year, nextDay.month, nextDay.day, hour, minute);
++    }
++    return candidate; // unerreichbar — 8 Tage decken jede Wochentagsmenge ab
++  }
++
++  Map<String, dynamic> toJson() => {
++        'id': id,
++        'name': name,
++        'hour': hour,
++        'minute': minute,
++        'weekdays': weekdays.toList()..sort(),
++        'enabled': enabled,
++        'bandPattern': bandPattern,
++        'fallbackEnabled': fallbackEnabled,
++        'fallbackMode': fallbackMode.name,
++      };
++
++  factory CmAlarm.fromJson(Map<String, dynamic> j) => CmAlarm(
++        id: (j['id'] as String?) ??
++            DateTime.now().microsecondsSinceEpoch.toString(),
++        name: (j['name'] as String?) ?? 'Wecker',
++        hour: (j['hour'] as num?)?.toInt() ?? 7,
++        minute: (j['minute'] as num?)?.toInt() ?? 0,
++        weekdays: {
++          for (final d in (j['weekdays'] as List? ?? const []))
++            (d as num).toInt(),
++        },
++        enabled: (j['enabled'] as bool?) ?? true,
++        bandPattern: ((j['bandPattern'] as num?)?.toInt() ?? 1).clamp(0, 2),
++        fallbackEnabled: (j['fallbackEnabled'] as bool?) ?? true,
++        fallbackMode: FallbackMode.values
++                .where((m) => m.name == j['fallbackMode'])
++                .firstOrNull ??
++            FallbackMode.loud,
++      );
++}
++
++class CmAlarmStore {
++  static const _key = 'cm_alarms_v1';
++
++  static Future<List<CmAlarm>> load() async {
++    final prefs = await SharedPreferences.getInstance();
++    final raw = prefs.getString(_key);
++    if (raw == null || raw.isEmpty) return [];
++    try {
++      final list = jsonDecode(raw) as List;
++      return [
++        for (final e in list)
++          CmAlarm.fromJson(Map<String, dynamic>.from(e as Map)),
++      ];
++    } catch (_) {
++      return [];
++    }
++  }
++
++  static Future<void> save(List<CmAlarm> alarms) async {
++    final prefs = await SharedPreferences.getInstance();
++    await prefs.setString(
++        _key, jsonEncode([for (final a in alarms) a.toJson()]));
++  }
++}
++
++// ── Anzeige-Helfer ───────────────────────────────────────────────────────────
++
++const _dayShort = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
++
++String weekdayShort(int weekday) => _dayShort[weekday - 1];
++
++/// "Mo–Fr", "Sa, So", "Täglich", "Einmalig" …
++String weekdaysSummary(Set<int> days) {
++  if (days.isEmpty) return 'Einmalig';
++  if (days.length == 7) return 'Täglich';
++  final sorted = days.toList()..sort();
++  // Zusammenhängender Block? Dann "Mo–Fr" statt Aufzählung.
++  final contiguous = sorted.length >= 3 &&
++      sorted.last - sorted.first == sorted.length - 1;
++  if (contiguous) {
++    return '${weekdayShort(sorted.first)}–${weekdayShort(sorted.last)}';
++  }
++  return sorted.map(weekdayShort).join(', ');
++}
++
++String fmtHm(int hour, int minute) =>
++    '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
++
++/// "Morgen 06:00" / "Mi 06:00" / "Heute 21:30" für die Kachel.
++String fmtNextOccurrence(DateTime when, DateTime now) {
++  final today = DateTime(now.year, now.month, now.day);
++  final thatDay = DateTime(when.year, when.month, when.day);
++  final diff = thatDay.difference(today).inDays;
++  final hm = fmtHm(when.hour, when.minute);
++  if (diff == 0) return 'Heute $hm';
++  if (diff == 1) return 'Morgen $hm';
++  return '${weekdayShort(when.weekday)} $hm';
++}
+diff --git a/lib/notify/wake_engine.dart b/lib/notify/wake_engine.dart
+new file mode 100644
+index 0000000..670a3ad
+--- /dev/null
++++ b/lib/notify/wake_engine.dart
+@@ -0,0 +1,251 @@
++// CM Health Wecker (v2.1.0) — die Weck-Maschine.
++//
++// Rollenverteilung (siehe alarm_models.dart für das Warum):
++//   • Das HANDY plant die Weckzeiten: ein präziser Dart-Timer auf den
++//     nächsten Wecker plus ein 20-s-Wachhund, der verschleppte Timer
++//     (Doze) über den Wanduhr-Vergleich nachholt. Der BLE-Vordergrund-
++//     dienst hält den Prozess ohnehin die ganze Nacht am Leben.
++//   • Als OS-Sicherheitsnetz wird je aktivem Wecker zusätzlich eine exakte
++//     Alarm-Benachrichtigung (AlarmManager-Klasse "Weckuhr", Doze-fest)
++//     45 s NACH der Weckzeit geplant — sie klingelt nur, wenn der Wecker
++//     bis dahin nicht abgeschaltet wurde oder der Prozess tot war, und
++//     folgt dem je Wecker eingestellten Modus (laut / vibrieren / stumm).
++//   • Zur Weckzeit vibriert das BAND: alle 3 s der gewählte Haptik-Effekt
++//     (0/1/2), bis abgeschaltet wird — per Doppeltipp aufs Band (Event 14)
++//     oder per Stopp-Knopf in der App. Obergrenze 10 Minuten.
++//   • Ist das Band beim Feuern nicht verbunden, klingelt das Handy sofort.
++//
++// Der band-interne Wecker (SET_ALARM_TIME) wird bewusst NICHT mehr benutzt.
++
++import 'dart:async';
++
++import '../models/cm_alarm.dart';
++import 'notification_service.dart';
++
++class WakeEngine {
++  WakeEngine({
++    required Future<void> Function(int pattern) buzz,
++    required bool Function() isBandConnected,
++    required void Function(String line) log,
++    required void Function() onChanged,
++  })  : _buzz = buzz,
++        _isBandConnected = isBandConnected,
++        _log = log,
++        _onChanged = onChanged;
++
++  final Future<void> Function(int pattern) _buzz;
++  final bool Function() _isBandConnected;
++  final void Function(String) _log;
++  final void Function() _onChanged;
++
++  List<CmAlarm> alarms = [];
++
++  CmAlarm? _ringing;
++  CmAlarm? get ringing => _ringing;
++  DateTime? _ringingSince;
++
++  Timer? _preciseTimer;
++  Timer? _watchdog;
++  Timer? _ringTick;
++  CmAlarm? _nextAlarm;
++  DateTime? _nextAt;
++  bool _fallbackShown = false;
++  bool _disposed = false;
++
++  /// Wecker + Zeitpunkt der nächsten anstehenden Auslösung (für die Kachel).
++  (CmAlarm, DateTime)? nextPlanned() {
++    final a = _nextAlarm;
++    final t = _nextAt;
++    if (a == null || t == null) return null;
++    return (a, t);
++  }
++
++  Future<void> init() async {
++    alarms = await CmAlarmStore.load();
++    _reschedule();
++  }
++
++  Future<void> upsert(CmAlarm alarm) async {
++    final i = alarms.indexWhere((a) => a.id == alarm.id);
++    if (i >= 0) {
++      alarms[i] = alarm;
++    } else {
++      alarms.add(alarm);
++    }
++    await _persistAndReplan();
++  }
++
++  Future<void> remove(String id) async {
++    alarms.removeWhere((a) => a.id == id);
++    if (_ringing?.id == id) await dismiss('gelöscht');
++    await _persistAndReplan();
++  }
++
++  Future<void> setEnabled(String id, bool enabled) async {
++    final i = alarms.indexWhere((a) => a.id == id);
++    if (i < 0) return;
++    alarms[i].enabled = enabled;
++    if (!enabled && _ringing?.id == id) await dismiss('deaktiviert');
++    await _persistAndReplan();
++  }
++
++  Future<void> _persistAndReplan() async {
++    await CmAlarmStore.save(alarms);
++    _reschedule();
++    _onChanged();
++  }
++
++  // ── Planung ────────────────────────────────────────────────────────────────
++
++  void _reschedule() {
++    if (_disposed) return;
++    _preciseTimer?.cancel();
++    _watchdog?.cancel();
++    final now = DateTime.now();
++
++    // OS-Sicherheitsnetz: pro aktivem Wecker die exakte Fallback-
++    // Benachrichtigung auf T+45 s (neu) planen; alte Planungen ersetzen.
++    unawaited(() async {
++      final n = NotificationService.instance;
++      await n.cancelWakeBand();
++      for (var i = 0; i < alarms.length; i++) {
++        final a = alarms[i];
++        if (!a.enabled || !a.fallbackEnabled) continue;
++        final at = a.nextOccurrence(now).add(const Duration(seconds: 45));
++        await n.scheduleWakeFallback(
++          id: NotificationService.idWakeBase + (i % 90),
++          at: at,
++          style: _styleFor(a.fallbackMode),
++          title: 'Wecker: ${a.name}',
++          body:
++              'Weckzeit ${fmtHm(a.hour, a.minute)} — in der App ausschalten.',
++        );
++      }
++    }());
++
++    // Nächsten Wecker bestimmen und den präzisen Timer stellen.
++    CmAlarm? soonest;
++    DateTime? soonestAt;
++    for (final a in alarms) {
++      if (!a.enabled) continue;
++      final t = a.nextOccurrence(now);
++      if (soonestAt == null || t.isBefore(soonestAt)) {
++        soonest = a;
++        soonestAt = t;
++      }
++    }
++    _nextAlarm = soonest;
++    _nextAt = soonestAt;
++    if (soonest == null || soonestAt == null) return;
++
++    _log('[wake] nächster Wecker "${soonest.name}" um $soonestAt '
++        '(Muster ${soonest.bandPattern}).');
++    _preciseTimer = Timer(soonestAt.difference(now), _fireDue);
++    // Wachhund: fängt Timer ab, die der Stromsparmodus verschleppt hat.
++    _watchdog = Timer.periodic(const Duration(seconds: 20), (_) {
++      final at = _nextAt;
++      if (_ringing == null && at != null && !DateTime.now().isBefore(at)) {
++        _fireDue();
++      }
++    });
++  }
++
++  WakeStyle _styleFor(FallbackMode m) => switch (m) {
++        FallbackMode.loud => WakeStyle.loud,
++        FallbackMode.vibrate => WakeStyle.vibrate,
++        FallbackMode.silent => WakeStyle.silent,
++      };
++
++  // ── Feuern ─────────────────────────────────────────────────────────────────
++
++  void _fireDue() {
++    final alarm = _nextAlarm;
++    if (alarm == null || _ringing != null || _disposed) return;
++    _preciseTimer?.cancel();
++    _watchdog?.cancel();
++    _ringing = alarm;
++    _ringingSince = DateTime.now();
++    _fallbackShown = false;
++    _log('[wake] WECKER FEUERT: "${alarm.name}" — Band-Schleife startet '
++        '(verbunden: ${_isBandConnected()}).');
++
++    // Band nicht da → Handy übernimmt sofort (im eingestellten Modus).
++    if (!_isBandConnected() && alarm.fallbackEnabled) {
++      _fallbackShown = true;
++      unawaited(NotificationService.instance.showWakeNow(
++        id: NotificationService.idWakeRinging,
++        style: _styleFor(alarm.fallbackMode),
++        title: 'Wecker: ${alarm.name}',
++        body: 'Band nicht verbunden — Handy übernimmt. In der App ausschalten.',
++      ));
++    }
++
++    unawaited(_buzz(alarm.bandPattern)); // erster Buzz sofort
++    _ringTick = Timer.periodic(const Duration(seconds: 3), (_) {
++      final since = _ringingSince;
++      if (since == null) return;
++      final elapsed = DateTime.now().difference(since);
++      if (elapsed > const Duration(minutes: 10)) {
++        _log('[wake] Obergrenze 10 min erreicht — Weckschleife endet.');
++        unawaited(dismiss('Zeitlimit'));
++        return;
++      }
++      if (_isBandConnected()) {
++        unawaited(_buzz(_ringing?.bandPattern ?? 1));
++      } else if (!_fallbackShown && (_ringing?.fallbackEnabled ?? false)) {
++        // Band während des Weckens weggebrochen → Handy übernimmt.
++        _fallbackShown = true;
++        unawaited(NotificationService.instance.showWakeNow(
++          id: NotificationService.idWakeRinging,
++          style: _styleFor(_ringing!.fallbackMode),
++          title: 'Wecker: ${_ringing!.name}',
++          body: 'Band nicht verbunden — Handy übernimmt.',
++        ));
++      }
++    });
++    _onChanged();
++  }
++
++  /// Doppeltipp aufs Band (Event 14). [tsEpochSec] ist der Band-Zeitstempel —
++  /// beim Sync nachgelieferte ALTE Tipps dürfen den Wecker nicht abschalten.
++  void onDoubleTap(int tsEpochSec) {
++    if (_ringing == null) return;
++    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
++    final fresh = tsEpochSec == 0 || (nowSec - tsEpochSec).abs() <= 20;
++    if (!fresh) {
++      _log('[wake] Doppeltipp ignoriert (alter Zeitstempel: $tsEpochSec).');
++      return;
++    }
++    _log('[wake] Doppeltipp aufs Band — Wecker aus.');
++    unawaited(dismiss('Doppeltipp'));
++  }
++
++  /// Wecker beenden (Doppeltipp, Stopp-Knopf, Zeitlimit, Löschung).
++  Future<void> dismiss(String source) async {
++    final alarm = _ringing;
++    if (alarm == null) return;
++    _ringTick?.cancel();
++    _ringTick = null;
++    _ringing = null;
++    _ringingSince = null;
++    _log('[wake] Wecker "${alarm.name}" beendet ($source).');
++    // Geplante/gezeigte Fallbacks dieses Weckvorgangs einsammeln.
++    final n = NotificationService.instance;
++    await n.cancelWakeBand();
++    await n.cancelWake(NotificationService.idWakeRinging);
++    if (alarm.isOneShot) {
++      final i = alarms.indexWhere((a) => a.id == alarm.id);
++      if (i >= 0) alarms[i].enabled = false;
++      await CmAlarmStore.save(alarms);
++    }
++    _reschedule();
++    _onChanged();
++  }
++
++  void dispose() {
++    _disposed = true;
++    _preciseTimer?.cancel();
++    _watchdog?.cancel();
++    _ringTick?.cancel();
++  }
++}
+diff --git a/lib/ui/alarm/alarm_edit_screen.dart b/lib/ui/alarm/alarm_edit_screen.dart
+new file mode 100644
+index 0000000..bd9b98a
+--- /dev/null
++++ b/lib/ui/alarm/alarm_edit_screen.dart
+@@ -0,0 +1,264 @@
++// CM Health Wecker (v2.1.0) — Wecker-Editor.
++//
++// Je Wecker: Name, Uhrzeit, Wochentage (leer = Einmal-Wecker),
++// Band-Vibrationsmuster (Firmware-Effekt 0/1/2, direkt am Band testbar)
++// und der Ersatzwecker am Handy (an/aus + laut/vibrieren/stumm).
++
++import 'package:flutter/material.dart';
++import 'package:provider/provider.dart';
++
++import '../../state/app_state.dart';
++import '../../theme/theme.dart';
++import '../../theme/tokens.dart';
++import '../design/design.dart';
++import '../kit/kit.dart';
++import '../../models/cm_alarm.dart';
++
++class AlarmEditResult {
++  final CmAlarm alarm;
++  final bool deleted;
++  AlarmEditResult(this.alarm, {this.deleted = false});
++}
++
++class AlarmEditScreen extends StatefulWidget {
++  final CmAlarm? alarm; // null = neu
++  const AlarmEditScreen({super.key, this.alarm});
++
++  @override
++  State<AlarmEditScreen> createState() => _AlarmEditScreenState();
++}
++
++class _AlarmEditScreenState extends State<AlarmEditScreen> {
++  late final String _id;
++  late final TextEditingController _name;
++  late int _hour;
++  late int _minute;
++  late Set<int> _weekdays;
++  late int _pattern;
++  late bool _fallbackEnabled;
++  late FallbackMode _fallbackMode;
++
++  bool get _isNew => widget.alarm == null;
++
++  @override
++  void initState() {
++    super.initState();
++    final a = widget.alarm;
++    _id = a?.id ?? DateTime.now().microsecondsSinceEpoch.toString();
++    _name = TextEditingController(text: a?.name ?? '');
++    _hour = a?.hour ?? 7;
++    _minute = a?.minute ?? 0;
++    _weekdays = {...(a?.weekdays ?? const <int>{})};
++    _pattern = a?.bandPattern ?? 1;
++    _fallbackEnabled = a?.fallbackEnabled ?? true;
++    _fallbackMode = a?.fallbackMode ?? FallbackMode.loud;
++  }
++
++  @override
++  void dispose() {
++    _name.dispose();
++    super.dispose();
++  }
++
++  void _save() {
++    final name = _name.text.trim();
++    Navigator.of(context).pop(AlarmEditResult(CmAlarm(
++      id: _id,
++      name: name.isEmpty ? 'Wecker' : name,
++      hour: _hour,
++      minute: _minute,
++      weekdays: _weekdays,
++      enabled: widget.alarm?.enabled ?? true,
++      bandPattern: _pattern,
++      fallbackEnabled: _fallbackEnabled,
++      fallbackMode: _fallbackMode,
++    )));
++  }
++
++  Future<void> _pickTime() async {
++    final t = await showTimePicker(
++      context: context,
++      initialTime: TimeOfDay(hour: _hour, minute: _minute),
++      helpText: 'Weckzeit',
++    );
++    if (t != null) setState(() {
++      _hour = t.hour;
++      _minute = t.minute;
++    });
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final app = context.read<AppState>();
++    return AppScaffold(
++      title: _isNew ? 'Neuer Wecker' : 'Wecker bearbeiten',
++      body: ListView(
++        padding: EdgeInsets.fromLTRB(
++            Sp.screen, Sp.x2, Sp.screen, dsBottomGutter(context)),
++        children: [
++          // ── Uhrzeit ──
++          SurfaceCard(
++            padding: const EdgeInsets.all(Sp.x4),
++            onTap: _pickTime,
++            child: Column(
++              children: [
++                Text(fmtHm(_hour, _minute),
++                    style: AppText.h1.copyWith(fontSize: 56)),
++                const SizedBox(height: Sp.x1),
++                Text('Tippen zum Ändern', style: AppText.captionMuted),
++              ],
++            ),
++          ),
++          const SizedBox(height: Sp.x3),
++          TextField(
++            controller: _name,
++            maxLength: 24,
++            decoration:
++                const InputDecoration(labelText: 'Name (z. B. Frühschicht)'),
++          ),
++          const SizedBox(height: Sp.x3),
++
++          // ── Wochentage ──
++          Text('Wiederholen', style: AppText.title),
++          const SizedBox(height: Sp.x2),
++          Wrap(
++            spacing: Sp.x2,
++            runSpacing: Sp.x2,
++            children: [
++              for (var d = DateTime.monday; d <= DateTime.sunday; d++)
++                _DayChip(
++                  label: weekdayShort(d),
++                  selected: _weekdays.contains(d),
++                  onTap: () => setState(() {
++                    if (!_weekdays.add(d)) _weekdays.remove(d);
++                  }),
++                ),
++            ],
++          ),
++          const SizedBox(height: Sp.x1),
++          Text(
++            _weekdays.isEmpty
++                ? 'Keine Tage gewählt: Einmal-Wecker — löst beim nächsten '
++                    'Erreichen der Uhrzeit aus und schaltet sich danach ab.'
++                : 'Löst ${weekdaysSummary(_weekdays)} um ${fmtHm(_hour, _minute)} aus.',
++            style: AppText.captionMuted,
++          ),
++          const SizedBox(height: Sp.x4),
++
++          // ── Band-Vibration ──
++          Text('Band-Vibration', style: AppText.title),
++          const SizedBox(height: Sp.x2),
++          SegmentedControl(
++            options: const ['Muster 0', 'Muster 1', 'Muster 2'],
++            index: _pattern,
++            expanded: true,
++            onChanged: (i) {
++              setState(() => _pattern = i);
++              app.testBuzzPattern(i).catchError((_) {});
++            },
++          ),
++          const SizedBox(height: Sp.x1),
++          Text(
++            'Beim Auswählen vibriert das Band einmal zur Probe. Zur Weckzeit '
++            'wiederholt sich das Muster alle 3 Sekunden, bis du den Wecker '
++            'per Doppeltipp aufs Band oder in der App ausschaltest.',
++            style: AppText.captionMuted,
++          ),
++          const SizedBox(height: Sp.x4),
++
++          // ── Ersatzwecker ──
++          Text('Ersatzwecker am Handy', style: AppText.title),
++          const SizedBox(height: Sp.x2),
++          SurfaceCard(
++            padding:
++                const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x1),
++            child: Column(
++              children: [
++                SwitchListTile(
++                  contentPadding: EdgeInsets.zero,
++                  title: Text('Ersatzwecker stellen', style: AppText.body),
++                  subtitle: Text(
++                    'Handy übernimmt, wenn das Band nicht verbunden ist oder '
++                    'der Wecker 45 s nicht ausgeschaltet wird.',
++                    style: AppText.captionMuted,
++                  ),
++                  value: _fallbackEnabled,
++                  onChanged: (v) => setState(() => _fallbackEnabled = v),
++                ),
++                if (_fallbackEnabled)
++                  Padding(
++                    padding: const EdgeInsets.only(bottom: Sp.x3),
++                    child: SegmentedControl(
++                      options: const ['Laut', 'Vibrieren', 'Stumm'],
++                      index: _fallbackMode.index,
++                      expanded: true,
++                      onChanged: (i) => setState(
++                          () => _fallbackMode = FallbackMode.values[i]),
++                    ),
++                  ),
++              ],
++            ),
++          ),
++          const SizedBox(height: Sp.x5),
++
++          FilledButton(
++            onPressed: _save,
++            style: FilledButton.styleFrom(
++                padding: const EdgeInsets.symmetric(vertical: Sp.x3)),
++            child: const Text('Speichern'),
++          ),
++          if (!_isNew) ...[
++            const SizedBox(height: Sp.x2),
++            OutlinedButton.icon(
++              style: OutlinedButton.styleFrom(
++                foregroundColor: AppColors.critical,
++                side: BorderSide(
++                    color: AppColors.critical.withValues(alpha: 0.5)),
++              ),
++              onPressed: () => Navigator.of(context)
++                  .pop(AlarmEditResult(widget.alarm!, deleted: true)),
++              icon: AppIcon(OsIcon.cancel, size: 18, color: AppColors.critical),
++              label: const Text('Wecker löschen'),
++            ),
++          ],
++        ],
++      ),
++    );
++  }
++}
++
++class _DayChip extends StatelessWidget {
++  final String label;
++  final bool selected;
++  final VoidCallback onTap;
++  const _DayChip(
++      {required this.label, required this.selected, required this.onTap});
++
++  @override
++  Widget build(BuildContext context) {
++    return InkWell(
++      onTap: onTap,
++      borderRadius: BorderRadius.circular(24),
++      child: Container(
++        width: 42,
++        height: 42,
++        alignment: Alignment.center,
++        decoration: BoxDecoration(
++          shape: BoxShape.circle,
++          color: selected ? AppColors.accent : Colors.transparent,
++          border: Border.all(
++            color: selected ? AppColors.accent : AppColors.divider,
++            width: 1.5,
++          ),
++        ),
++        child: Text(
++          label,
++          style: AppText.body.copyWith(
++            color: selected ? Colors.black : AppColors.inkMuted,
++            fontWeight: FontWeight.w700,
++          ),
++        ),
++      ),
++    );
++  }
++}
+diff --git a/lib/ui/alarm/alarm_screen.dart b/lib/ui/alarm/alarm_screen.dart
+new file mode 100644
+index 0000000..8f1eebd
+--- /dev/null
++++ b/lib/ui/alarm/alarm_screen.dart
+@@ -0,0 +1,133 @@
++// CM Health Wecker (v2.1.0) — Weckerliste.
++//
++// Eigener Menüpunkt (Today-Kopfzeile, wie der Intervall-Timer): alle
++// gespeicherten Wecker mit An/Aus-Schalter; + legt einen neuen an, Tippen
++// öffnet den Editor. Läuft gerade ein Wecker, sitzt oben eine Stopp-Karte.
++
++import 'package:flutter/material.dart';
++import 'package:provider/provider.dart';
++
++import '../../state/app_state.dart';
++import '../../theme/theme.dart';
++import '../../theme/tokens.dart';
++import '../design/design.dart';
++import '../kit/kit.dart';
++import '../../models/cm_alarm.dart';
++import '../../notify/notification_service.dart';
++import 'alarm_edit_screen.dart';
++
++class AlarmScreen extends StatelessWidget {
++  const AlarmScreen({super.key});
++
++  Future<void> _edit(BuildContext context, CmAlarm? alarm) async {
++    final app = context.read<AppState>();
++    final result = await Navigator.of(context).push<AlarmEditResult>(
++      MaterialPageRoute(builder: (_) => AlarmEditScreen(alarm: alarm)),
++    );
++    if (result == null) return;
++    if (result.deleted) {
++      await app.wakeEngine.remove(result.alarm.id);
++    } else {
++      await app.wakeEngine.upsert(result.alarm);
++      // Android 12+: exakte Alarme brauchen ggf. eine Sondergenehmigung —
++      // beim ersten Speichern abfragen (mit USE_EXACT_ALARM meist ein No-op).
++      await NotificationService.instance.ensureExactAlarmPermission();
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final app = context.watch<AppState>();
++    final engine = app.wakeEngine;
++    final alarms = engine.alarms;
++    final ringing = engine.ringing;
++    final now = DateTime.now();
++
++    return AppScaffold(
++      title: 'Wecker',
++      actions: [
++        RoundIconButton(OsIcon.plus, onTap: () => _edit(context, null)),
++      ],
++      body: ListView(
++        padding: EdgeInsets.fromLTRB(
++            Sp.screen, Sp.x2, Sp.screen, dsBottomGutter(context)),
++        children: [
++          if (ringing != null) ...[
++            SurfaceCard(
++              padding: const EdgeInsets.all(Sp.x4),
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.stretch,
++                children: [
++                  Text('Wecker läuft: ${ringing.name}',
++                      style: AppText.h2, textAlign: TextAlign.center),
++                  const SizedBox(height: Sp.x2),
++                  Text(
++                    'Doppeltippe aufs Band oder drücke Stopp.',
++                    style: AppText.captionMuted,
++                    textAlign: TextAlign.center,
++                  ),
++                  const SizedBox(height: Sp.x3),
++                  FilledButton(
++                    onPressed: () => engine.dismiss('Stopp-Knopf'),
++                    style: FilledButton.styleFrom(
++                      backgroundColor: AppColors.critical,
++                      padding: const EdgeInsets.symmetric(vertical: Sp.x3),
++                    ),
++                    child: const Text('STOPP'),
++                  ),
++                ],
++              ),
++            ),
++            const SizedBox(height: Sp.x2),
++          ],
++          if (alarms.isEmpty)
++            StateCard(
++              icon: OsIcon.alarm,
++              title: 'Noch keine Wecker',
++              message: 'Lege mit + deinen ersten Wecker an. Geweckt wirst du '
++                  'durch die Band-Vibration am Handgelenk; ausschalten geht '
++                  'per Doppeltipp aufs Band.',
++              actionLabel: 'Wecker anlegen',
++              onAction: () => _edit(context, null),
++            )
++          else
++            for (final a in alarms) ...[
++              SurfaceCard(
++                padding: const EdgeInsets.symmetric(
++                    horizontal: Sp.x4, vertical: Sp.x2),
++                onTap: () => _edit(context, a),
++                child: ListRow(
++                  icon: OsIcon.alarm,
++                  iconColor: a.enabled
++                      ? AppColors.accent
++                      : AppColors.inkMuted,
++                  title: '${fmtHm(a.hour, a.minute)} · ${a.name}',
++                  subtitle: _subtitle(a, now),
++                  trailing: Switch(
++                    value: a.enabled,
++                    onChanged: (v) => engine.setEnabled(a.id, v),
++                  ),
++                ),
++              ),
++              const SizedBox(height: Sp.x2),
++            ],
++          const SizedBox(height: Sp.x2),
++          Text(
++            'Der Wecker läuft über das Handy und lässt das Band vibrieren — '
++            'zuverlässig, auch wenn das Band zwischendurch neu startet. Ist '
++            'das Band zur Weckzeit nicht verbunden, übernimmt der '
++            'Ersatzwecker am Handy (einstellbar je Wecker).',
++            style: AppText.captionMuted,
++          ),
++        ],
++      ),
++    );
++  }
++
++  String _subtitle(CmAlarm a, DateTime now) {
++    final days = weekdaysSummary(a.weekdays);
++    if (!a.enabled) return '$days · aus';
++    final next = a.nextOccurrence(now);
++    return '$days · als Nächstes ${fmtNextOccurrence(next, now)}';
++  }
++}

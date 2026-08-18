@@ -12,10 +12,21 @@ index 6930dd0..49c9b10 100644
          // For more information, see: https://flutter.dev/to/review-gradle-config.
          minSdk = maxOf(26, flutter.minSdkVersion) // Health Connect requires API 26+
 diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
-index 6b3b686..3b1365b 100644
+index 6b3b686..2f602e8 100644
 --- a/android/app/src/main/AndroidManifest.xml
 +++ b/android/app/src/main/AndroidManifest.xml
-@@ -78,7 +78,7 @@
+@@ -35,6 +35,10 @@
+     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+     <!-- Keep the CPU alive while the boot receiver starts the foreground service. -->
+     <uses-permission android:name="android.permission.WAKE_LOCK" />
++    <!-- CM Health v2.1.0 Wecker: exakte Weckzeiten (Weckuhr-Klasse) + Vollbild-Alarm -->
++    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
++    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
++    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+     <!-- OTA self-update: download + launch the system installer for the new APK. -->
+     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+     <!-- Notification relay: let the user pick from their installed apps. Android 11+
+@@ -78,7 +82,7 @@
          android:required="false" />
  
      <application
@@ -24,7 +35,7 @@ index 6b3b686..3b1365b 100644
          android:name=".EdgeApplication"
          android:icon="@mipmap/launcher_icon">
          <!-- ── ZERO-COLLECTION BY DEFAULT (privacy tier 1) ──
-@@ -203,7 +203,7 @@
+@@ -203,7 +207,7 @@
               "Notification access" in system settings. Class lives in the plugin. -->
          <service
              android:name="notification.listener.service.NotificationListener"
@@ -57,7 +68,7 @@ index ce81bb5..dfc4e09 100644
      <string name="widget_battery_label">Band battery</string>
      <string name="widget_battery_description">Your strap\'s battery, from the last connection.</string>
 diff --git a/pubspec.yaml b/pubspec.yaml
-index f102c44..df486e0 100644
+index f102c44..24fa68e 100644
 --- a/pubspec.yaml
 +++ b/pubspec.yaml
 @@ -6,7 +6,7 @@ publish_to: 'none'
@@ -65,7 +76,7 @@ index f102c44..df486e0 100644
  # to FLUTTER_BUILD_NAME/FLUTTER_BUILD_NUMBER. See guides/IOS_INSTALLATION.md
  # "Version Numbers".
 -version: 0.9.26+57
-+version: 2.0.3+103
++version: 2.1.0+110
  
  environment:
    sdk: ^3.11.4

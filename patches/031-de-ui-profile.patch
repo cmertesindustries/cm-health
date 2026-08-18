@@ -745,7 +745,7 @@ index c2b4e3e..3aa6dde 100644
                    onChanged: (v) =>
                        _update(_p.copyWith(criticalOverridesQuiet: v)),
 diff --git a/lib/ui/profile/profile_screen.dart b/lib/ui/profile/profile_screen.dart
-index b828f88..ce8ef44 100644
+index b828f88..7936d60 100644
 --- a/lib/ui/profile/profile_screen.dart
 +++ b/lib/ui/profile/profile_screen.dart
 @@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
@@ -1754,8 +1754,18 @@ index b828f88..ce8ef44 100644
                ],
              ),
            ),
-@@ -1624,21 +1664,21 @@ class _DeviceSheet extends StatelessWidget {
-     final alarm = live.alarmEpoch;
+@@ -1616,29 +1656,28 @@ class _DeviceSheet extends StatelessWidget {
+     // pass here missed `device`/`paired` — re-audited against every `live.`
+     // touchpoint in this class after finding the same gap cost a real bug in
+     // the main ProfileScreen build above.)
+-    context.select<AppState, (bool, int?, String?, dynamic, dynamic)>(
+-      (a) => (a.isConnected, a.alarmEpoch, a.strapName, a.device, a.paired),
++    context.select<AppState, (bool, String?, dynamic, dynamic)>(
++      (a) => (a.isConnected, a.strapName, a.device, a.paired),
+     );
+     final live = context.read<AppState>();
+     final connected = live.isConnected;
+-    final alarm = live.alarmEpoch;
  
      return _SheetShell(
 -      title: live.strapName ?? 'OpenStrap',
@@ -1763,7 +1773,7 @@ index b828f88..ce8ef44 100644
        children: [
          if (!connected)
 -          _Notice('Connect to your strap to rename it or change the alarm.'),
-+          _Notice('Verbinde dein Band, um es umzubenennen oder den Wecker zu ändern.'),
++          _Notice('Verbinde dein Band, um es umzubenennen oder zu testen.'),
          ListRow(
            icon: OsIcon.edit,
 -          title: 'Rename strap',
@@ -1782,52 +1792,67 @@ index b828f88..ce8ef44 100644
            divider: true,
            onTap: connected
                ? () {
-@@ -1653,8 +1693,8 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1651,67 +1690,20 @@ class _DeviceSheet extends StatelessWidget {
+                 }
+               : null,
          ),
-         ListRow(
-           icon: OsIcon.alarm,
+-        ListRow(
+-          icon: OsIcon.alarm,
 -          title: 'Smart alarm',
 -          value: alarm != null ? _fmtAlarm(alarm) : 'Off',
-+          title: 'Smart-Wecker',
-+          value: alarm != null ? _fmtAlarm(alarm) : 'Aus',
-           onTap: connected ? () => _setAlarm(context, live) : null,
-         ),
-         // ALARM STATUS: the rich firing form (haptic waveform) is wired, and the
-@@ -1677,13 +1717,13 @@ class _DeviceSheet extends StatelessWidget {
-                 onPressed: () async {
-                   try {
-                     await live.testAlarmBuzz();
+-          onTap: connected ? () => _setAlarm(context, live) : null,
+-        ),
+-        // ALARM STATUS: the rich firing form (haptic waveform) is wired, and the
+-        // strap now CONFIRMS the alarm latched via its own event stream — so this
+-        // caption reflects the real confirmation state instead of a blanket
+-        // "experimental" warning.
+-        if (alarm != null)
+-          Padding(
+-            padding: const EdgeInsets.only(top: Sp.x1),
+-            child: Text(
+-              _alarmStatusText(live),
+-              style: AppText.captionMuted,
+-            ),
+-          ),
+-        if (connected && alarm != null)
+-          Padding(
+-            padding: const EdgeInsets.only(top: Sp.x2),
+-            child: Row(children: [
+-              OutlinedButton.icon(
+-                onPressed: () async {
+-                  try {
+-                    await live.testAlarmBuzz();
 -                    if (context.mounted) _snack(context, 'Sent a test buzz.');
-+                    if (context.mounted) _snack(context, 'Test-Vibration gesendet.');
-                   } catch (e) {
+-                  } catch (e) {
 -                    if (context.mounted) _snack(context, 'Buzz failed: $e');
-+                    if (context.mounted) _snack(context, 'Vibration fehlgeschlagen: $e');
-                   }
-                 },
-                 icon: const AppIcon(OsIcon.notifications, size: 18),
+-                  }
+-                },
+-                icon: const AppIcon(OsIcon.notifications, size: 18),
 -                label: const Text('Test buzz'),
-+                label: const Text('Test-Vibration'),
-               ),
-               const SizedBox(width: Sp.x2),
-               OutlinedButton.icon(
-@@ -1692,20 +1732,20 @@ class _DeviceSheet extends StatelessWidget {
-                     await live.clearAlarm();
-                     if (context.mounted) {
-                       Navigator.pop(context);
+-              ),
+-              const SizedBox(width: Sp.x2),
+-              OutlinedButton.icon(
+-                onPressed: () async {
+-                  try {
+-                    await live.clearAlarm();
+-                    if (context.mounted) {
+-                      Navigator.pop(context);
 -                      _snack(context, 'Alarm cleared.');
-+                      _snack(context, 'Wecker gelöscht.');
-                     }
-                   } catch (e) {
+-                    }
+-                  } catch (e) {
 -                    if (context.mounted) _snack(context, 'Clear failed: $e');
-+                    if (context.mounted) _snack(context, 'Löschen fehlgeschlagen: $e');
-                   }
-                 },
-                 icon: const AppIcon(OsIcon.cancel, size: 18),
+-                  }
+-                },
+-                icon: const AppIcon(OsIcon.cancel, size: 18),
 -                label: const Text('Clear alarm'),
-+                label: const Text('Wecker löschen'),
-               ),
-             ]),
-           ),
+-              ),
+-            ]),
+-          ),
++        // CM Health v2.1.0: Der band-interne Smart-Wecker ist abgeschafft — der
++        // Wecker lebt jetzt als Handy-Wecker-Engine mit eigenem Menüpunkt
++        // (Today-Kopfzeile), weil diese Band-Firmware gestellte Wecker nie
++        // zuverlässig gefeuert hat. Die Vibrationsmuster-Reihe unten bleibt
++        // als Direkt-Test der drei wirksamen Effekte.
          if (connected) ...[
            const SizedBox(height: Sp.x2),
 -          Text('Buzz patterns', style: AppText.captionMuted),
@@ -1835,7 +1860,14 @@ index b828f88..ce8ef44 100644
            const SizedBox(height: Sp.x2),
            Wrap(
              spacing: Sp.x2,
-@@ -1720,11 +1760,11 @@ class _DeviceSheet extends StatelessWidget {
+             runSpacing: Sp.x2,
+             children: [
+-              for (final p in [0, 1, 2, 3, 4, 5, 6, 7])
++              for (final p in [0, 1, 2]) // nur 0–2 sind auf dieser Firmware wirksam
+                 SizedBox(
+                   width: 48,
+                   height: 48,
+@@ -1720,11 +1712,11 @@ class _DeviceSheet extends StatelessWidget {
                        try {
                          await live.testBuzzPattern(p);
                          if (context.mounted) {
@@ -1849,7 +1881,7 @@ index b828f88..ce8ef44 100644
                          }
                        }
                      },
-@@ -1740,7 +1780,7 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1740,7 +1732,7 @@ class _DeviceSheet extends StatelessWidget {
          Divider(height: Sp.x4, thickness: 1, color: AppColors.divider),
          ListRow(
            icon: OsIcon.info,
@@ -1858,7 +1890,7 @@ index b828f88..ce8ef44 100644
            value: live.device.serial ?? live.paired?.serial ?? '—',
          ),
          const SizedBox(height: Sp.x4),
-@@ -1756,7 +1796,7 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1756,20 +1748,13 @@ class _DeviceSheet extends StatelessWidget {
              ),
              onPressed: () => _forget(context, live),
              icon: AppIcon(OsIcon.cancel, size: 18, color: AppColors.critical),
@@ -1867,7 +1899,20 @@ index b828f88..ce8ef44 100644
            ),
          ),
        ],
-@@ -1780,20 +1820,20 @@ class _DeviceSheet extends StatelessWidget {
+     );
+   }
+ 
+-  String _fmtAlarm(int epoch) {
+-    final dt = DateTime.fromMillisecondsSinceEpoch(epoch * 1000).toLocal();
+-    final h = dt.hour.toString().padLeft(2, '0');
+-    final m = dt.minute.toString().padLeft(2, '0');
+-    return '$h:$m  (${dt.month}/${dt.day})';
+-  }
+-
+   Future<void> _rename(BuildContext context, AppState app) async {
+     final ctrl = TextEditingController(text: app.strapName ?? '');
+     final name = await showModalBottomSheet<String>(
+@@ -1780,20 +1765,20 @@ class _DeviceSheet extends StatelessWidget {
          borderRadius: BorderRadius.vertical(top: Radius.circular(R.card)),
        ),
        builder: (_) => _SheetShell(
@@ -1891,46 +1936,55 @@ index b828f88..ce8ef44 100644
              ),
            ),
          ],
-@@ -1802,9 +1842,9 @@ class _DeviceSheet extends StatelessWidget {
+@@ -1802,64 +1787,27 @@ class _DeviceSheet extends StatelessWidget {
      if (name == null || name.isEmpty) return;
      try {
        await app.renameStrap(name);
 -      if (context.mounted) _snack(context, 'Renamed to "$name".');
+-    } catch (e) {
+-      if (context.mounted) _snack(context, 'Rename failed: $e');
+-    }
+-  }
+-
+-  Future<void> _setAlarm(BuildContext context, AppState app) async {
+-    final now = DateTime.now();
+-    final picked = await showTimePicker(
+-      context: context,
+-      initialTime: TimeOfDay(hour: (now.hour + 8) % 24, minute: 0),
+-    );
+-    if (picked == null) return;
+-    var when = DateTime(
+-      now.year,
+-      now.month,
+-      now.day,
+-      picked.hour,
+-      picked.minute,
+-    );
+-    if (!when.isAfter(now)) when = when.add(const Duration(days: 1));
+-    try {
+-      await app.setAlarm(when);
+-      if (context.mounted) {
+-        _snack(
+-          context,
+-          'Alarm set for ${picked.format(context)} — confirming with the strap…',
+-        );
+-      }
 +      if (context.mounted) _snack(context, 'Umbenannt in "$name".');
      } catch (e) {
--      if (context.mounted) _snack(context, 'Rename failed: $e');
+-      if (context.mounted) _snack(context, 'Set failed: $e');
 +      if (context.mounted) _snack(context, 'Umbenennen fehlgeschlagen: $e');
      }
    }
  
-@@ -1828,38 +1868,39 @@ class _DeviceSheet extends StatelessWidget {
-       if (context.mounted) {
-         _snack(
-           context,
--          'Alarm set for ${picked.format(context)} — confirming with the strap…',
-+          'Wecker gestellt auf ${picked.format(context)} — warte auf Bestätigung vom Band…',
-         );
-       }
-     } catch (e) {
--      if (context.mounted) _snack(context, 'Set failed: $e');
-+      if (context.mounted) _snack(context, 'Stellen fehlgeschlagen: $e');
-     }
-   }
- 
-   /// Live alarm caption driven by the strap's confirmation events (see AppState's
-   /// alarm state machine): confirmed ✓ / pending / soft unconfirmed warning.
-   String _alarmStatusText(AppState app) {
+-  /// Live alarm caption driven by the strap's confirmation events (see AppState's
+-  /// alarm state machine): confirmed ✓ / pending / soft unconfirmed warning.
+-  String _alarmStatusText(AppState app) {
 -    if (app.alarmConfirmed) return 'Alarm set ✓ — confirmed by your strap.';
 -    if (app.alarmPending) return 'Setting alarm… waiting for the strap to confirm.';
 -    return 'Alarm sent, but the strap hasn\'t confirmed it yet. '
 -        'Tap "Test buzz" to check it fires, and keep a backup alarm.';
-+    if (app.alarmConfirmed) return 'Wecker gestellt ✓ — vom Band bestätigt.';
-+    if (app.alarmPending) return 'Wecker wird gestellt… warte auf Bestätigung vom Band.';
-+    return 'Wecker gesendet, aber das Band hat ihn noch nicht bestätigt. '
-+        'Tippe auf "Test-Vibration", um zu prüfen, ob er auslöst, und stelle '
-+        'sicherheitshalber einen zweiten Wecker.';
-   }
- 
+-  }
+-
    Future<void> _forget(BuildContext context, AppState app) async {
      final ok = await _confirm(
        context,
@@ -1954,7 +2008,7 @@ index b828f88..ce8ef44 100644
      }
    }
  }
-@@ -1920,12 +1961,12 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1920,12 +1868,12 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
        });
        if (mounted) {
          Navigator.pop(context);
@@ -1969,7 +2023,7 @@ index b828f88..ce8ef44 100644
        }
      }
    }
-@@ -1933,7 +1974,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1933,7 +1881,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
    @override
    Widget build(BuildContext context) {
      return _SheetShell(
@@ -1978,7 +2032,7 @@ index b828f88..ce8ef44 100644
        children: [
          TextField(
            controller: _name,
-@@ -1946,7 +1987,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1946,7 +1894,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
                child: TextField(
                  controller: _age,
                  keyboardType: TextInputType.number,
@@ -1987,7 +2041,7 @@ index b828f88..ce8ef44 100644
                ),
              ),
              const SizedBox(width: Sp.x3),
-@@ -1968,7 +2009,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1968,7 +1916,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
            ],
          ),
          const SizedBox(height: Sp.x4),
@@ -1996,7 +2050,7 @@ index b828f88..ce8ef44 100644
              style: AppText.overline.copyWith(color: AppColors.inkMuted)),
          const SizedBox(height: Sp.x2),
          Wrap(
-@@ -1976,14 +2017,18 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1976,14 +1924,18 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
            children: [
              for (final opt in const ['male', 'female', 'other'])
                ToggleChip(
@@ -2017,7 +2071,7 @@ index b828f88..ce8ef44 100644
          const SizedBox(height: Sp.x5),
          SizedBox(
            width: double.infinity,
-@@ -1998,7 +2043,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
+@@ -1998,7 +1950,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
                        color: Colors.white,
                      ),
                    )
