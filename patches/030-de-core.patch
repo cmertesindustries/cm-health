@@ -1881,7 +1881,7 @@ index 86060d3..28e7d78 100644
      final route = r.payload;
      if (route != null && route.isNotEmpty) _taps.add(route);
 diff --git a/lib/state/app_state.dart b/lib/state/app_state.dart
-index dbca2b1..2ae8ee3 100644
+index dbca2b1..4751a1e 100644
 --- a/lib/state/app_state.dart
 +++ b/lib/state/app_state.dart
 @@ -72,6 +72,7 @@ import '../live/breathing_live_activity.dart';
@@ -1919,16 +1919,18 @@ index dbca2b1..2ae8ee3 100644
      engine = BleEngine(
        onRecord: _onRecord,
        onState: _onEngineState,
-@@ -1045,6 +1059,18 @@ class AppState extends ChangeNotifier {
+@@ -1045,6 +1059,20 @@ class AppState extends ChangeNotifier {
        onMarkMoment: _markMomentFromGesture,
        onWorkoutToggle: _toggleWorkoutFromGesture,
      );
 +    // CM Health v2.1.0: Handy-Wecker-Engine — das Handy plant, das Band
 +    // vibriert (siehe lib/notify/wake_engine.dart für die Architektur).
 +    wakeEngine = WakeEngine(
++      // `this.engine` (nicht der nullable Parameter): das Feld ist am Ende
++      // dieses Konstruktors sicher belegt, die Closure feuert erst später.
 +      buzz: (p) async {
 +        try {
-+          await engine.buzzPattern(p);
++          await this.engine.buzzPattern(p);
 +        } catch (_) {/* Band gerade weg — die Schleife versucht es erneut */}
 +      },
 +      isBandConnected: () => isConnected,
@@ -1938,7 +1940,7 @@ index dbca2b1..2ae8ee3 100644
      this.engine = engine ??
          BleEngine(
            onRecord: _onRecord,
-@@ -1095,6 +1121,7 @@ class AppState extends ChangeNotifier {
+@@ -1095,6 +1123,7 @@ class AppState extends ChangeNotifier {
      _stopReconnectSupervisor();
      _alarmGraceTimer?.cancel();
      _alarmGraceTimer = null;
@@ -1946,7 +1948,7 @@ index dbca2b1..2ae8ee3 100644
      _spotTimer?.cancel();
      _spotTimer = null;
      _breathingRecomputeTimer?.cancel();
-@@ -1308,7 +1335,7 @@ class AppState extends ChangeNotifier {
+@@ -1308,7 +1337,7 @@ class AppState extends ChangeNotifier {
                ?.toDouble();
            if (tstSec != null && tstSec > 0) {
              final m = (tstSec / 60).round();
@@ -1955,7 +1957,7 @@ index dbca2b1..2ae8ee3 100644
            }
          }
        } catch (_) {
-@@ -1328,8 +1355,8 @@ class AppState extends ChangeNotifier {
+@@ -1328,8 +1357,8 @@ class AppState extends ChangeNotifier {
            dedupeKey: '$dayId:recovery_ready',
            category: NotifCategory.recovery,
            priority: NotifPriority.normal,
@@ -1966,7 +1968,7 @@ index dbca2b1..2ae8ee3 100644
            date: dayId,
            route: '/today',
          ),
-@@ -1459,9 +1486,9 @@ class AppState extends ChangeNotifier {
+@@ -1459,9 +1488,9 @@ class AppState extends ChangeNotifier {
            dedupeKey: '$date:step_goal',
            category: NotifCategory.reminders,
            priority: NotifPriority.low,
@@ -1978,7 +1980,7 @@ index dbca2b1..2ae8ee3 100644
            date: date,
            route: '/today',
          ),
-@@ -1504,9 +1531,9 @@ class AppState extends ChangeNotifier {
+@@ -1504,9 +1533,9 @@ class AppState extends ChangeNotifier {
            dedupeKey: '$today:posture:${nowMs ~/ (2 * 60 * 60 * 1000)}',
            category: NotifCategory.reminders,
            priority: NotifPriority.low,
@@ -1990,7 +1992,7 @@ index dbca2b1..2ae8ee3 100644
            date: today,
            route: '/today',
          ),
-@@ -1543,9 +1570,9 @@ class AppState extends ChangeNotifier {
+@@ -1543,9 +1572,9 @@ class AppState extends ChangeNotifier {
        await NotificationService.instance.scheduleOnce(
          id: NotificationService.idStillness,
          category: NotifCategory.reminders,
@@ -2002,7 +2004,7 @@ index dbca2b1..2ae8ee3 100644
          at: at,
          route: '/today',
        );
-@@ -1568,7 +1595,7 @@ class AppState extends ChangeNotifier {
+@@ -1568,7 +1597,7 @@ class AppState extends ChangeNotifier {
    Future<int> reanalyzeAll() async {
      if (reanalyzing) return 0;
      reanalyzing = true;
@@ -2011,7 +2013,7 @@ index dbca2b1..2ae8ee3 100644
      notifyListeners();
      try {
        final n = await _derive.run(
-@@ -1578,7 +1605,7 @@ class AppState extends ChangeNotifier {
+@@ -1578,7 +1607,7 @@ class AppState extends ChangeNotifier {
          // Per-day callback: surface progress AND refresh the UI so each real day's
          // metrics appear as soon as it's derived (Today fills in one day at a time).
          onDayDone: (day, index, total) async {
@@ -2020,7 +2022,7 @@ index dbca2b1..2ae8ee3 100644
            if (index == total || index == 1 || index % 3 == 0) {
              dbCounts = await LocalDb.counts();
              notifyListeners();
-@@ -1675,7 +1702,7 @@ class AppState extends ChangeNotifier {
+@@ -1675,7 +1704,7 @@ class AppState extends ChangeNotifier {
      reanalyzing = true;
      final ordered = days.toList()..sort();
      reanalyzeProgress =
@@ -2029,7 +2031,7 @@ index dbca2b1..2ae8ee3 100644
      notifyListeners();
      try {
        final n = await _derive.runDays(
-@@ -1683,7 +1710,7 @@ class AppState extends ChangeNotifier {
+@@ -1683,7 +1712,7 @@ class AppState extends ChangeNotifier {
          days,
          force: true,
          onDayDone: (day, index, total) async {
@@ -2038,7 +2040,7 @@ index dbca2b1..2ae8ee3 100644
            if (index == total || index == 1 || index % 3 == 0) {
              dbCounts = await LocalDb.counts();
              notifyListeners();
-@@ -1754,6 +1781,11 @@ class AppState extends ChangeNotifier {
+@@ -1754,6 +1783,11 @@ class AppState extends ChangeNotifier {
    void _onLiveEvent(int id, int ts, String hex) {
      LocalDb.insertEvent(id, ts, hex);
      _handleAlarmEvent(id, ts);
@@ -2050,7 +2052,7 @@ index dbca2b1..2ae8ee3 100644
      _gestureDispatcher.onEvent(id, ts, hex);
    }
  
-@@ -1777,7 +1809,12 @@ class AppState extends ChangeNotifier {
+@@ -1777,7 +1811,12 @@ class AppState extends ChangeNotifier {
          await LocalDb.getCursorInt('rec_ts_hw') ?? lastSynced?.tsEpoch;
      dbCounts = await LocalDb.counts();
      await LocalDb.refreshComputeFreshness();
@@ -2064,7 +2066,7 @@ index dbca2b1..2ae8ee3 100644
      // Band-gesture mapping: load the saved action + query native capabilities so the
      // settings UI knows what this platform supports. Best-effort, non-blocking.
      unawaited(gestureSettings.bootstrap());
-@@ -2547,7 +2584,7 @@ class AppState extends ChangeNotifier {
+@@ -2547,7 +2586,7 @@ class AppState extends ChangeNotifier {
          NotificationEvent(
            dedupeKey: '$day:battery_overnight',
            category: NotifCategory.device,
@@ -2073,7 +2075,7 @@ index dbca2b1..2ae8ee3 100644
            body: BatteryForecaster.describe(f, wakeAt: wakeAt),
            date: day,
            route: '/profile',
-@@ -3006,9 +3043,21 @@ class AppState extends ChangeNotifier {
+@@ -3006,9 +3045,21 @@ class AppState extends ChangeNotifier {
    // band DID latch the alarm), there is no retry/re-poll for it and the
    // GET_ALARM readback fallback is parked (unconfirmed format), so the app had
    // no way to ever clear the "unconfirmed" warning short of the user
@@ -2098,7 +2100,7 @@ index dbca2b1..2ae8ee3 100644
  
    /// The strap emitted ALARM_SET (event 56) — the alarm is confirmed armed.
    bool get alarmConfirmed => _alarm.confirmed;
-@@ -3027,9 +3076,32 @@ class AppState extends ChangeNotifier {
+@@ -3027,9 +3078,32 @@ class AppState extends ChangeNotifier {
    int? get alarmFiredAt => _alarm.firedAt;
  
    Future<void> setAlarm(DateTime when) async {
@@ -2132,7 +2134,7 @@ index dbca2b1..2ae8ee3 100644
      // Pass the DateTime through so the engine computes REAL sub-seconds for the
      // rich 20-byte firing form (a hardcoded 0 subsec would still fire, but the
      // engine owns the exact on-wire layout).
-@@ -3040,12 +3112,12 @@ class AppState extends ChangeNotifier {
+@@ -3040,12 +3114,12 @@ class AppState extends ChangeNotifier {
        // strap to confirm" that can never fire. Surface it so the UI reflects
        // "couldn't send" (the coach/profile callers snackbar on a throw).
        _log('[alarm] arm write FAILED — not persisting; alarm not set.');
@@ -2147,7 +2149,7 @@ index dbca2b1..2ae8ee3 100644
      final prefs = await SharedPreferences.getInstance();
      await prefs.setInt('alarm_epoch', epoch);
      // Nudge the UI once the grace window elapses so an unconfirmed alarm flips to
-@@ -3064,52 +3136,75 @@ class AppState extends ChangeNotifier {
+@@ -3064,52 +3138,75 @@ class AppState extends ChangeNotifier {
      );
    }
  
@@ -2234,7 +2236,7 @@ index dbca2b1..2ae8ee3 100644
      await engine.buzzPattern(pattern);
    }
  
-@@ -3131,7 +3226,7 @@ class AppState extends ChangeNotifier {
+@@ -3131,7 +3228,7 @@ class AppState extends ChangeNotifier {
    Future<int?> readBandRssi() => engine.readRssi();
  
    Future<void> disableAlarm() async {
@@ -2243,7 +2245,7 @@ index dbca2b1..2ae8ee3 100644
      await engine.disableAlarm();
      _savedAlarm = null;
      device.alarmEpoch = null;
-@@ -3151,6 +3246,13 @@ class AppState extends ChangeNotifier {
+@@ -3151,6 +3248,13 @@ class AppState extends ChangeNotifier {
    /// the protocol EventId names (strapDrivenAlarmSet == 56, …); the pure state
    /// machine matches the raw ids so it stays dependency-free.
    void _handleAlarmEvent(int id, int ts) {
@@ -2257,7 +2259,7 @@ index dbca2b1..2ae8ee3 100644
      final effect = _alarm.onEvent(id, DateTime.now().millisecondsSinceEpoch);
      if (effect == null) return;
      switch (effect) {
-@@ -3199,14 +3301,36 @@ class AppState extends ChangeNotifier {
+@@ -3199,14 +3303,36 @@ class AppState extends ChangeNotifier {
      }());
    }
  
@@ -2296,7 +2298,7 @@ index dbca2b1..2ae8ee3 100644
          date: todayLabel(),
          route: '/today',
        ));
-@@ -3216,7 +3340,7 @@ class AppState extends ChangeNotifier {
+@@ -3216,7 +3342,7 @@ class AppState extends ChangeNotifier {
    }
  
    Future<void> renameStrap(String name) async {
@@ -2305,7 +2307,7 @@ index dbca2b1..2ae8ee3 100644
      await engine.setStrapName(name);
      device.strapName = name; // optimistic
      await engine.getStrapName();
-@@ -3760,7 +3884,7 @@ class AppState extends ChangeNotifier {
+@@ -3760,7 +3886,7 @@ class AppState extends ChangeNotifier {
    Future<void> startSpotCheck() async {
      if (spotActive) return;
      if (!isConnected) {
@@ -2314,7 +2316,7 @@ index dbca2b1..2ae8ee3 100644
        notifyListeners();
        return;
      }
-@@ -3822,12 +3946,12 @@ class AppState extends ChangeNotifier {
+@@ -3822,12 +3948,12 @@ class AppState extends ChangeNotifier {
            : await repo!.spotCheck(frames);
        spotResult = res;
        if (res == null) {
@@ -2330,7 +2332,7 @@ index dbca2b1..2ae8ee3 100644
      } finally {
        spotActive = false;
        notifyListeners();
-@@ -3893,7 +4017,7 @@ class AppState extends ChangeNotifier {
+@@ -3893,7 +4019,7 @@ class AppState extends ChangeNotifier {
    }) async {
      if (breathingActive) return;
      if (!isConnected) {
@@ -2339,7 +2341,7 @@ index dbca2b1..2ae8ee3 100644
        notifyListeners();
        return;
      }
-@@ -4568,7 +4692,7 @@ class AppState extends ChangeNotifier {
+@@ -4568,7 +4694,7 @@ class AppState extends ChangeNotifier {
        } catch (_) {
          /* fresh day / seam not implemented — start clean */
        }
