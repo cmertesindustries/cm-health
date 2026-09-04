@@ -1,0 +1,133 @@
+diff --git a/lib/ui/profile/profile_screen.dart b/lib/ui/profile/profile_screen.dart
+index 7936d60..356e164 100644
+--- a/lib/ui/profile/profile_screen.dart
++++ b/lib/ui/profile/profile_screen.dart
+@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
+ import 'package:provider/provider.dart';
+ import 'package:share_plus/share_plus.dart';
+ import 'diagnose_export.dart';
++import '../report/heart_report_screen.dart';
+ import 'package:url_launcher/url_launcher.dart';
+ 
+ import '../../data/db.dart';
+@@ -366,6 +367,18 @@ class ProfileScreen extends StatelessWidget {
+                 divider: true,
+               ),
+             ),
++            // CM Health v2.3.0: Herzreport (PDF + CSV) direkt aus der App.
++            ListRow(
++              icon: OsIcon.heartRate,
++              title: 'Herzreport exportieren',
++              value: 'PDF + CSV',
++              divider: true,
++              onTap: () => Navigator.of(context).push(
++                MaterialPageRoute<void>(
++                  builder: (_) => const HeartReportScreen(),
++                ),
++              ),
++            ),
+             // CM Health (v2.0.1): one-tap diagnose report — app state + logs
+             // straight into the share sheet, for remote debugging.
+             Builder(
+@@ -1730,6 +1743,12 @@ class _DeviceSheet extends StatelessWidget {
+           ),
+         ],
+         Divider(height: Sp.x4, thickness: 1, color: AppColors.divider),
++        // CM Health v2.3.0: Abruftakt der Band-Daten (Flash-Nachholen).
++        const _SyncIntervalRow(),
++        Divider(height: Sp.x4, thickness: 1, color: AppColors.divider),
++        // CM Health v2.3.0: Log-Deckel — Paket-Ebene nur auf Wunsch.
++        const _VerboseLogRow(),
++        Divider(height: Sp.x4, thickness: 1, color: AppColors.divider),
+         ListRow(
+           icon: OsIcon.info,
+           title: 'Seriennummer',
+@@ -2018,3 +2037,88 @@ void _snack(BuildContext context, String msg) {
+     ..hideCurrentSnackBar()
+     ..showSnackBar(SnackBar(content: Text(msg)));
+ }
++
++
++/// CM Health v2.3.0: Abruftakt der Band-Daten (5/10/15 min). Das Band puffert
++/// im Flash; die App holt in diesem Takt nach. 5 min = schnellste Aktualität,
++/// kostet etwas Funkzeit (je Abruf ~30 s).
++class _SyncIntervalRow extends StatefulWidget {
++  const _SyncIntervalRow();
++
++  @override
++  State<_SyncIntervalRow> createState() => _SyncIntervalRowState();
++}
++
++class _SyncIntervalRowState extends State<_SyncIntervalRow> {
++  static const _options = [5, 10, 15];
++
++  @override
++  Widget build(BuildContext context) {
++    final app = context.read<AppState>();
++    final idx = _options.indexOf(app.syncIntervalMin).clamp(0, 2);
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.start,
++      children: [
++        Text('Abruftakt der Band-Daten', style: AppText.captionMuted),
++        const SizedBox(height: Sp.x2),
++        SegmentedControl(
++          options: const ['5 min', '10 min', '15 min'],
++          index: idx,
++          expanded: true,
++          onChanged: (i) async {
++            await app.setSyncIntervalMin(_options[i]);
++            if (mounted) setState(() {});
++          },
++        ),
++        const SizedBox(height: Sp.x2),
++        Text(
++          'Wie oft die App die im Band gepufferten Daten nachholt. '
++          '5 min hält „Heute" am aktuellsten und kostet etwas Funkzeit.',
++          style: AppText.captionMuted,
++        ),
++      ],
++    );
++  }
++}
++
++/// CM Health v2.3.0: Schalter „Ausführliches Protokoll". Aus = nur Zustands-,
++/// Fehler- und Weck-Zeilen (Log bleibt klein); An = zusätzlich jede
++/// Paket-Zeile des Sync-Protokolls (für tiefe Diagnosen, wächst schnell —
++/// Ringlog deckelt bei 50 MB).
++class _VerboseLogRow extends StatefulWidget {
++  const _VerboseLogRow();
++
++  @override
++  State<_VerboseLogRow> createState() => _VerboseLogRowState();
++}
++
++class _VerboseLogRowState extends State<_VerboseLogRow> {
++  @override
++  Widget build(BuildContext context) {
++    final app = context.read<AppState>();
++    return Row(
++      children: [
++        Expanded(
++          child: Column(
++            crossAxisAlignment: CrossAxisAlignment.start,
++            children: [
++              Text('Ausführliches Protokoll', style: AppText.body),
++              const SizedBox(height: 2),
++              Text(
++                'Paket-Ebene mitschreiben (nur für Diagnosen; Ringlog max. 50 MB).',
++                style: AppText.captionMuted,
++              ),
++            ],
++          ),
++        ),
++        Switch(
++          value: app.verboseLog,
++          onChanged: (v) async {
++            await app.setVerboseLog(v);
++            if (mounted) setState(() {});
++          },
++        ),
++      ],
++    );
++  }
++}
