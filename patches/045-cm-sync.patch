@@ -624,7 +624,7 @@ index b4eb7d0..1729e17 100644
 @@ -13,7 +13,13 @@
  import 'dart:math' as math;
  
- // ── timing constants (seconds) ────────────────────────────────────────────────
+ // ── timing constants (seconds) ───────────────────────────────────────────────
 -const int kBackfillIntervalSeconds = 900; // re-offload every 15 min (periodic)
 +const int kBackfillIntervalSeconds = 900; // upstream default (15 min)
 +
