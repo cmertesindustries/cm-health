@@ -1,0 +1,674 @@
+diff --git a/lib/ble/ble_engine.dart b/lib/ble/ble_engine.dart
+index 044647d..97ec30a 100644
+--- a/lib/ble/ble_engine.dart
++++ b/lib/ble/ble_engine.dart
+@@ -1374,7 +1374,7 @@ class BleEngine {
+       // Periodic backfill (900s): re-trigger the historical offload while connected,
+       // floored by BackfillPolicy so a flapping link can't hammer the strap.
+       session.periodicBackfill = Timer.periodic(
+-        const Duration(seconds: kBackfillIntervalSeconds),
++        Duration(seconds: cmBackfillIntervalSeconds),
+         (_) => _triggerBackfill(BackfillTrigger.periodic),
+       );
+ 
+@@ -1396,6 +1396,9 @@ class BleEngine {
+       _setOffloadActive(true);
+       _lastBackfillAt = _wallSecs();
+       await sendInit(); // triggers the historical offload flood
++      // CM Health v2.3.0: HF-Modus vorsorglich beenden (falls das Band ihn
++      // aus einer früheren App-Version noch hält).
++      unawaited(_exitHighFreqIfPrompted());
+       return true;
+     } catch (e) {
+       _log('connect setup failed: $e');
+@@ -1517,6 +1520,20 @@ class BleEngine {
+     return true;
+   }
+ 
++  /// CM Health v2.3.0: Abruftakt zur Laufzeit ändern (Einstellung im
++  /// Geräte-Sheet). Legt den Periodik-Timer der laufenden Verbindung neu an.
++  void applyBackfillInterval(int seconds) {
++    cmBackfillIntervalSeconds = seconds;
++    final session = _session;
++    if (session == null || !session.connected) return;
++    session.periodicBackfill?.cancel();
++    session.periodicBackfill = Timer.periodic(
++      Duration(seconds: seconds),
++      (_) => _triggerBackfill(BackfillTrigger.periodic),
++    );
++    _log('[SYNC] Abruftakt jetzt ${seconds ~/ 60} min.');
++  }
++
+   /// Foreground catch-up pull: the app came back to the foreground on a healthy
+   /// link and wants the flash backlog NOW instead of waiting out the 15-min
+   /// periodic timer. Floored at [BackfillPolicy.eventFloorSeconds] (90 s) so
+@@ -1830,6 +1847,27 @@ class BleEngine {
+     _highFreqUntil = targetWake;
+   }
+ 
++  /// CM Health v2.3.0: EXIT_HIGH_FREQ_SYNC vorsorglich schicken (nach dem
++  /// Verbinden und auf Band-Prompts), unabhängig davon, ob DIESE App-Instanz
++  /// den Modus je angefordert hat — das Band kann ihn aus einer früheren
++  /// Version noch halten. Höchstens alle 5 min.
++  double _lastHfExitAt = 0;
++  Future<void> _exitHighFreqIfPrompted() async {
++    if (_session?.connected != true) return;
++    final now = _wallSecs();
++    if (now - _lastHfExitAt < 300) return;
++    _lastHfExitAt = now;
++    _log('[SYNC] HighFreq exit (cm_force) — EXIT_HIGH_FREQ_SYNC gesendet.');
++    try {
++      await _write(cmdExitHighFreqSync(_seq.nextLive()));
++    } catch (e) {
++      _log('[SYNC] HighFreq exit (cm_force) fehlgeschlagen: $e');
++    }
++    _highFreqModeRequested = false;
++    _highFreqReason = null;
++    _highFreqUntil = null;
++  }
++
+   Future<void> _disableHighFreqSync({required String reason}) async {
+     if (_session?.connected != true || !_highFreqModeRequested) {
+       _highFreqModeRequested = false;
+@@ -2169,6 +2207,19 @@ class BleEngine {
+       final newest = (f['history_newest'] as num?)?.toInt();
+       if (oldest != null) _strapHistoryOldestTs = oldest;
+       if (newest != null) _strapHistoryNewestTs = newest;
++      // CM Health v2.3.0: Meldet das Band glaubwürdig Rückstand (>2 min hinter
++      // seinem Neuesten), darf der Leer-Abruf-Backoff nicht weiter bremsen.
++      final frontier = _recordGate.frontierTs;
++      final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
++      if (newest != null &&
++          frontier > 0 &&
++          newest < nowSec + 86400 &&
++          newest - frontier > 120 &&
++          _emptyStreak > 0) {
++        _log('[SYNC] Band meldet Rückstand (${newest - frontier}s) — '
++            'Leer-Abruf-Backoff zurückgesetzt (war $_emptyStreak).');
++        _emptyStreak = 0;
++      }
+       unawaited(
+         LocalDb.upsertSyncLedgerEntry(
+           status: 'range_seen',
+@@ -2304,16 +2355,12 @@ class BleEngine {
+   void _handleEventInfo(EventInfo event) {
+     switch (event.eventId) {
+       case EventId.highFreqSyncPrompt:
+-        _log(
+-          '[SYNC] HighFreq prompt received — scheduling a one-shot historical refresh.',
+-        );
+-        unawaited(
+-          _startHistoricalRefresh(
+-            trigger: BackfillTrigger.strap,
+-            reason: 'high_freq_prompt',
+-            refreshRange: true,
+-          ),
+-        );
++        // CM Health v2.3.0: Der HF-Modus wird nicht mehr genutzt (er lieferte
++        // die Flash-Daten nur tröpfchenweise und hielt die App 90 min im
++        // Kriechgang). Prompts lösen keine Abruf-Stürme mehr aus; steckt das
++        // Band noch im Modus, wird er (höchstens alle 5 min) beendet.
++        _log('[SYNC] HighFreq prompt received — ignoriert (CM: HF-Modus aus).');
++        unawaited(_exitHighFreqIfPrompted());
+         return;
+       case EventId.highFreqSyncEnabled:
+         _log('[SYNC] HighFreq sync enabled event received.');
+diff --git a/lib/compute/derive_scheduler.dart b/lib/compute/derive_scheduler.dart
+index d7f1537..6fd495f 100644
+--- a/lib/compute/derive_scheduler.dart
++++ b/lib/compute/derive_scheduler.dart
+@@ -27,6 +27,16 @@ class DeriveScheduler {
+ 
+   bool _offloadActive = false;
+ 
++  /// CM Health v2.3.0: Eine laufende Übertragung hält die Tagesberechnung
++  /// höchstens [maxOffloadHold] lang an. Vorher konnte ein zäher Offload
++  /// (Band im High-Frequency-Modus, 90 min Kriechgang) Schlaf/Tagesform
++  /// unbegrenzt blockieren — die Rechnung selbst dauert nur Sekunden.
++  static const Duration maxOffloadHold = Duration(minutes: 2);
++  bool _offloadHoldExpired = false;
++  Timer? _offloadHoldTimer;
++
++  bool get _offloadGate => _offloadActive && !_offloadHoldExpired;
++
+   /// True while a live workout is running. Held exactly like [_offloadActive].
+   ///
+   /// Heavy derivation spawns an isolate (roughly doubling peak heap) and hits
+@@ -102,10 +112,21 @@ class DeriveScheduler {
+   void setOffloadActive(bool active) {
+     if (_offloadActive == active) return;
+     _offloadActive = active;
++    _offloadHoldTimer?.cancel();
++    _offloadHoldTimer = null;
++    _offloadHoldExpired = false;
+     if (active) {
+       _timer?.cancel();
+       _timer = null;
+       log('[derive-scheduler] capture active — holding derive work');
++      _offloadHoldTimer = Timer(maxOffloadHold, () {
++        if (!_offloadActive) return;
++        _offloadHoldExpired = true;
++        log('[derive-scheduler] capture still active after '
++            '${maxOffloadHold.inSeconds}s — derive may run alongside');
++        onChanged();
++        _arm();
++      });
+       onChanged();
+       return;
+     }
+@@ -137,6 +158,8 @@ class DeriveScheduler {
+   void dispose() {
+     _timer?.cancel();
+     _timer = null;
++    _offloadHoldTimer?.cancel();
++    _offloadHoldTimer = null;
+   }
+ 
+   Future<void> _enqueue({
+@@ -149,7 +172,7 @@ class DeriveScheduler {
+   }
+ 
+   void _arm() {
+-    if (_running || _offloadActive || _background || _workoutActive) return;
++    if (_running || _offloadGate || _background || _workoutActive) return;
+     if (!_pendingLight && !_pendingHeavy) {
+       unawaited(_refreshSnapshot());
+       return;
+@@ -162,7 +185,7 @@ class DeriveScheduler {
+   }
+ 
+   Future<void> _drain() async {
+-    if (_running || _offloadActive || _background || _workoutActive) return;
++    if (_running || _offloadGate || _background || _workoutActive) return;
+     _timer?.cancel();
+     _timer = null;
+     final job = await LocalDb.takeNextComputeJob();
+@@ -176,7 +199,7 @@ class DeriveScheduler {
+     // land) inside it — at which point running the pass is exactly what the
+     // gate exists to prevent. The job is already marked `running` by
+     // takeNextComputeJob, so hand it back rather than leaving it claimed.
+-    if (_offloadActive || _background || _workoutActive) {
++    if (_offloadGate || _background || _workoutActive) {
+       if (id != null && id.isNotEmpty) {
+         await LocalDb.requeueComputeJob(id);
+       }
+diff --git a/lib/data/db.dart b/lib/data/db.dart
+index 5b8ebe0..b3256ff 100644
+--- a/lib/data/db.dart
++++ b/lib/data/db.dart
+@@ -3608,6 +3608,51 @@ class LocalDb {
+     return dest;
+   }
+ 
++  /// CM Health v2.3.0: Einmalige Bereinigung von Geister-Tagen — alle Tage,
++  /// deren Datensätze vor [cutoffSec] liegen (Band-Uhr-Artefakte), samt
++  /// Rohdaten und abgeleiteten Zeilen. Liefert die Zahl gelöschter Zeilen.
++  static Future<int> cmPurgeBefore(int cutoffSec, String cutoffDay) async {
++    final db = await instance;
++    final days = <String>{};
++    for (final row in await db.rawQuery(
++      "SELECT DISTINCT date(rec_ts, 'unixepoch', 'localtime') AS d "
++      'FROM decoded_onehz WHERE rec_ts < ?',
++      [cutoffSec],
++    )) {
++      final d = row['d']?.toString();
++      if (d != null && d.isNotEmpty) days.add(d);
++    }
++    for (final t in const ['day_result', 'sleep_session_candidates',
++        'wake_day_features']) {
++      for (final row in await db.rawQuery(
++          'SELECT DISTINCT day_id AS d FROM $t WHERE day_id < ?', [cutoffDay])) {
++        final d = row['d']?.toString();
++        if (d != null && d.isNotEmpty) days.add(d);
++      }
++    }
++    for (final t in const ['derived_day', 'metric_series']) {
++      for (final row in await db.rawQuery(
++          'SELECT DISTINCT date AS d FROM $t WHERE date < ?', [cutoffDay])) {
++        final d = row['d']?.toString();
++        if (d != null && d.isNotEmpty) days.add(d);
++      }
++    }
++    int deleted = 0;
++    if (days.isNotEmpty) deleted += await deleteDays(days);
++    deleted += await db.delete('derived_day',
++        where: 'date < ?', whereArgs: [cutoffDay]);
++    deleted += await db.delete('decoded_rr',
++        where: 'counter IN (SELECT counter FROM decoded_onehz WHERE rec_ts < ?)',
++        whereArgs: [cutoffSec]);
++    deleted += await db.delete('decoded_onehz',
++        where: 'rec_ts < ?', whereArgs: [cutoffSec]);
++    deleted += await db.delete('samples',
++        where: 'ts < ?', whereArgs: [cutoffSec]);
++    deleted += await db.delete('raw_archive',
++        where: 'rec_ts IS NOT NULL AND rec_ts < ?', whereArgs: [cutoffSec]);
++    return deleted;
++  }
++
+   static Future<int> deleteDays(Set<String> dayIds) async {
+     final sorted = dayIds.toList()..sort();
+     if (sorted.isEmpty) return 0;
+diff --git a/lib/state/app_state.dart b/lib/state/app_state.dart
+index 058e580..96f6871 100644
+--- a/lib/state/app_state.dart
++++ b/lib/state/app_state.dart
+@@ -78,11 +78,11 @@ import '../notify/water_buzzer.dart';
+ import '../sync/background_sync.dart' show checkSyncStaleness;
+ import '../sync/edge_tracking.dart';
+ import '../sync/band_ownership.dart';
+-import '../sync/high_freq_wake_window.dart';
+ import '../sync/ios_bg_task.dart';
+ import '../sync/paired_device.dart';
+ import '../sync/sync_policy.dart'
+     show
++        cmBackfillIntervalSeconds,
+         isLinkStale,
+         ReconnectSupervisorAction,
+         StalenessTier,
+@@ -1828,6 +1828,9 @@ class AppState extends ChangeNotifier {
+     // Bestätigungs-Maschine nie wieder anläuft. Wecken übernimmt die WakeEngine.
+     await (await SharedPreferences.getInstance()).remove('alarm_epoch');
+     _savedAlarm = null;
++    await _loadSyncInterval(); // CM v2.3.0: Abruftakt vor dem Verbinden setzen
++    await _loadVerboseLog();
++    unawaited(_cmPurgePhantomDaysOnce());
+     await wakeEngine.init();
+     // Band-gesture mapping: load the saved action + query native capabilities so the
+     // settings UI knows what this platform supports. Best-effort, non-blocking.
+@@ -3739,27 +3742,97 @@ class AppState extends ChangeNotifier {
+ 
+   Future<void> syncNow() => openSession();
+ 
++  /// CM Health v2.3.0: Das High-Frequency-Wake-Window ist ABGESCHALTET.
++  /// Upstream schaltete das Band 90 min vor der gewohnten Aufwachzeit in den
++  /// HF-Sync-Modus (für den band-internen Smart-Wecker). In dem Modus kamen
++  /// die Flash-Daten nur tröpfchenweise (3–13 statt ~60 Pakete/s), die
++  /// Tagesberechnung stand 90 min still, und der Leer-Abruf-Backoff drosselte
++  /// danach den Takt. Der Wecker läuft seit v2.1.0 über das Handy — der Modus
++  /// ist reiner Ballast. Hier wird er nur noch (falls aktiv) beendet.
+   Future<void> _refreshHighFreqWakeWindow() async {
+     if (!engine.isConnected) return;
+     try {
+-      final plan = await HighFreqWakeWindow.planNow();
+       await engine.applyHighFreqWakeWindow(
+-        enabled: plan.shouldEnable,
+-        targetWake: plan.targetWake,
+-        duration: HighFreqWakeWindow.lease,
+-        intervalSeconds: 60,
+-        reason: plan.source,
+-      );
+-      _log(
+-        '[SYNC] HighFreq wake window: source=${plan.source} '
+-        'samples=${plan.sampleCount} enabled=${plan.shouldEnable} '
+-        'target=${plan.targetWake?.toIso8601String()}',
++        enabled: false,
++        targetWake: null,
++        reason: 'cm_disabled',
+       );
+     } catch (e) {
+       _log('[SYNC] HighFreq wake window skipped: $e');
+     }
+   }
+ 
++  // ── CM Health v2.3.0: Abruftakt der Band-Daten (5/10/15 min) ──────────────
++  static const String _kSyncIntervalPref = 'cm_sync_interval_min';
++  int syncIntervalMin = 5;
++
++  Future<void> _loadSyncInterval() async {
++    try {
++      final prefs = await SharedPreferences.getInstance();
++      final v = prefs.getInt(_kSyncIntervalPref) ?? 5;
++      syncIntervalMin = (v == 10 || v == 15) ? v : 5;
++    } catch (_) {
++      syncIntervalMin = 5;
++    }
++    cmBackfillIntervalSeconds = syncIntervalMin * 60;
++  }
++
++  // ── CM Health v2.3.0: einmalige Bereinigung der Geister-Tage ──────────────
++  // Datensätze vor Projektstart (Aug. 2026) stammen aus Band-Uhr-Artefakten
++  // (z. B. Phantom-Tag 2025-05-11). Läuft genau einmal je Installation.
++  Future<void> _cmPurgePhantomDaysOnce() async {
++    const key = 'cm_purge_phantom_v1';
++    const cutoffDay = '2026-08-01';
++    const cutoffSec = 1785542400; // 2026-08-01 00:00 UTC
++    try {
++      final prefs = await SharedPreferences.getInstance();
++      if (prefs.getBool(key) == true) return;
++      final n = await LocalDb.cmPurgeBefore(cutoffSec, cutoffDay);
++      await prefs.setBool(key, true);
++      _log('[CM] Geister-Tage bereinigt: $n Zeilen vor $cutoffDay gelöscht.');
++      if (n > 0) {
++        dbCounts = await LocalDb.counts();
++        notifyListeners();
++      }
++    } catch (e) {
++      _log('[CM] Geister-Tag-Bereinigung fehlgeschlagen: $e');
++    }
++  }
++
++  // ── CM Health v2.3.0: Ausführliches Protokoll (Paket-Ebene) ───────────────
++  static const String _kVerboseLogPref = 'cm_verbose_log';
++  bool get verboseLog => FileLog.verbose;
++
++  Future<void> _loadVerboseLog() async {
++    try {
++      final prefs = await SharedPreferences.getInstance();
++      FileLog.verbose = prefs.getBool(_kVerboseLogPref) ?? false;
++    } catch (_) {
++      FileLog.verbose = false;
++    }
++  }
++
++  Future<void> setVerboseLog(bool on) async {
++    FileLog.verbose = on;
++    _log('[LOG] Ausführliches Protokoll ${on ? "AN" : "AUS"}.');
++    try {
++      final prefs = await SharedPreferences.getInstance();
++      await prefs.setBool(_kVerboseLogPref, on);
++    } catch (_) {}
++    notifyListeners();
++  }
++
++  Future<void> setSyncIntervalMin(int minutes) async {
++    final v = (minutes == 10 || minutes == 15) ? minutes : 5;
++    syncIntervalMin = v;
++    engine.applyBackfillInterval(v * 60);
++    try {
++      final prefs = await SharedPreferences.getInstance();
++      await prefs.setInt(_kSyncIntervalPref, v);
++    } catch (_) {}
++    notifyListeners();
++  }
++
+   Future<void> endSession() async {
+     _keepAlive = false;
+     BandOwnership.markForegroundIntent(false);
+diff --git a/lib/sync/background_sync.dart b/lib/sync/background_sync.dart
+index d9847ee..086b079 100644
+--- a/lib/sync/background_sync.dart
++++ b/lib/sync/background_sync.dart
+@@ -21,7 +21,6 @@ import '../data/db.dart';
+ import '../notify/notification_center.dart';
+ import '../notify/notification_event.dart';
+ import 'band_ownership.dart';
+-import 'high_freq_wake_window.dart';
+ import 'paired_device.dart';
+ import 'sync_policy.dart';
+ 
+@@ -94,19 +93,14 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
+       return true;
+     }
+     try {
+-      final plan = await HighFreqWakeWindow.planNow();
++      // CM Health v2.3.0: HF-Wake-Window abgeschaltet (siehe AppState) —
++      // nur noch beenden, falls das Band den Modus noch hält.
+       await engine.applyHighFreqWakeWindow(
+-        enabled: plan.shouldEnable,
+-        targetWake: plan.targetWake,
+-        duration: HighFreqWakeWindow.lease,
+-        intervalSeconds: 60,
+-        reason: plan.source,
+-      );
+-      debugPrint(
+-        '[bgsync] HighFreq wake window: source=${plan.source} '
+-        'samples=${plan.sampleCount} enabled=${plan.shouldEnable} '
+-        'target=${plan.targetWake?.toIso8601String()}',
++        enabled: false,
++        targetWake: null,
++        reason: 'cm_disabled',
+       );
++      debugPrint('[bgsync] HighFreq wake window: cm_disabled');
+       // Await the full backlog (default timeout): a phone-free run/sleep can leave a
+       // large offline backlog on the band's flash. We never abort — if iOS cuts the
+       // background window short, the offload persists what it got (flush-before-ACK)
+diff --git a/lib/sync/file_log.dart b/lib/sync/file_log.dart
+index 8aed1ab..ca129ec 100644
+--- a/lib/sync/file_log.dart
++++ b/lib/sync/file_log.dart
+@@ -2,14 +2,77 @@
+ //
+ // Writes to the app's external files dir on Android so it can be pulled with a
+ // plain `adb pull` (no run-as needed):
+-//   /storage/emulated/0/Android/data/wtf.openstrap.openstrap_edge/files/openstrap_sync.log
++//   /storage/emulated/0/Android/data/<package>/files/openstrap_sync.log
++//
++// CM Health v2.3.0 — Log-Deckel:
++//  * Ringlog: Wächst die Datei über [maxBytes] (50 MB), wird sie zu
++//    `openstrap_sync.log.1` rotiert (die Vorgängerin fliegt raus) — Obergrenze
++//    damit ~100 MB statt unbegrenzt (1,3 GB nach 2 Wochen Dauerbetrieb).
++//  * Drosselung: Die gesprächigen Paket-Zeilen des Sync-Protokolls (ACK-Frames,
++//    COMMIT-Buchführung, RESP/EVENT-Hexdumps, META-Marker, Zähler-Warnungen)
++//    landen nur noch bei eingeschaltetem „Ausführliches Protokoll" ([verbose]);
++//    sie machten >95 % des Volumens aus. Zustands-, Fehler-, Weck-, Derive- und
++//    Backfill-Zeilen werden immer geschrieben.
++//  * Gepufferte Schreibvorgänge (statt open+append+flush je Zeile).
+ 
++import 'dart:async';
+ import 'dart:io';
+ import 'package:path_provider/path_provider.dart';
+ 
+ class FileLog {
+   static File? _file;
+   static bool _init = false;
++  static int _size = 0;
++  static final StringBuffer _buf = StringBuffer();
++  static int _bufBytes = 0;
++  static Timer? _flushTimer;
++  static bool _flushing = false;
++  static int _dropped = 0;
++
++  /// Obergrenze der aktiven Logdatei; danach Rotation nach `.1`.
++  static const int maxBytes = 50 * 1024 * 1024;
++  static const int _flushBytes = 64 * 1024;
++  static const Duration _flushEvery = Duration(seconds: 3);
++
++  /// Ausführliches Protokoll (Paket-Ebene). Wird von AppState aus den
++  /// Einstellungen gesetzt; Standard aus.
++  static bool verbose = false;
++
++  /// Zeilenanfänge, die im Normalbetrieb NICHT geschrieben werden.
++  static const List<String> _noisyPrefixes = [
++    '[SYNC] ACK frame=',
++    '[COMMIT] ',
++    '[RESP] op=',
++    '[EVENT] ',
++    '[SYNC] META sub=',
++    '[SYNC] Burst packet-count mismatch',
++    '[SYNC] Record counter regressed',
++    '[SYNC] HistoryEnd batch=',
++    '[SYNC] HistoryStart',
++    '[SPO2] hist=',
++    '[LIVE] ',
++    '[RR] ',
++  ];
++
++  static bool _isNoisy(String line) {
++    for (final p in _noisyPrefixes) {
++      if (line.startsWith(p)) return true;
++    }
++    // Nackte Hexdumps (Fortsetzungszeilen der Paket-Logs).
++    if (line.length >= 8) {
++      var hex = true;
++      for (var i = 0; i < line.length; i++) {
++        final c = line.codeUnitAt(i);
++        final isHex = (c >= 48 && c <= 57) || (c >= 97 && c <= 102);
++        if (!isHex) {
++          hex = false;
++          break;
++        }
++      }
++      if (hex) return true;
++    }
++    return false;
++  }
+ 
+   static Future<void> _ensure() async {
+     if (_init) return;
+@@ -18,28 +81,107 @@ class FileLog {
+       final dir = await getExternalStorageDirectory() ??
+           await getApplicationDocumentsDirectory();
+       _file = File('${dir.path}/openstrap_sync.log');
++      _size = await _file!.exists() ? await _file!.length() : 0;
++      // Altbestand aus Vor-2.3.0-Zeiten (unbegrenzt gewachsen) sofort
++      // rotieren, damit die Datei nie über dem Deckel bleibt.
++      if (_size > maxBytes) await _rotate();
+     } catch (_) {
+       _file = null;
+     }
+   }
+ 
+-  static Future<void> write(String line) async {
+-    await _ensure();
++  static Future<void> _rotate() async {
++    final f = _file;
++    if (f == null) return;
+     try {
+-      await _file?.writeAsString('$line\n',
+-          mode: FileMode.append, flush: true);
++      final old = File('${f.path}.1');
++      if (await old.exists()) await old.delete();
++      if (await f.exists()) await f.rename(old.path);
++      _file = File(f.path);
++      _size = 0;
++      await _file!.writeAsString(
++        '===== LOG ROTIERT (Deckel ${maxBytes ~/ (1024 * 1024)} MB) =====\n',
++        mode: FileMode.append,
++        flush: true,
++      );
+     } catch (_) {}
+   }
+ 
++  /// Zeile anhängen (gepuffert). Lärmige Paket-Zeilen nur bei [verbose].
++  static void write(String line) {
++    if (!verbose && _isNoisy(line)) {
++      _dropped++;
++      return;
++    }
++    _buf.writeln(line);
++    _bufBytes += line.length + 1;
++    if (_bufBytes >= _flushBytes) {
++      unawaited(flush());
++    } else {
++      _flushTimer ??= Timer(_flushEvery, () => unawaited(flush()));
++    }
++  }
++
++  /// Puffer auf die Platte schreiben (auch vor Export/Teilen aufrufen).
++  static Future<void> flush() async {
++    _flushTimer?.cancel();
++    _flushTimer = null;
++    if (_flushing || _bufBytes == 0) return;
++    _flushing = true;
++    final chunk = _buf.toString();
++    final bytes = _bufBytes;
++    _buf.clear();
++    _bufBytes = 0;
++    try {
++      await _ensure();
++      final f = _file;
++      if (f != null) {
++        if (_size + bytes > maxBytes) await _rotate();
++        await _file!.writeAsString(chunk, mode: FileMode.append, flush: true);
++        _size += bytes;
++      }
++    } catch (_) {
++    } finally {
++      _flushing = false;
++      // Während des Schreibens könnte Neues aufgelaufen sein.
++      if (_bufBytes > 0) {
++        _flushTimer ??= Timer(_flushEvery, () => unawaited(flush()));
++      }
++    }
++  }
++
+   static Future<String?> path() async {
++    await flush();
+     await _ensure();
+     return _file?.path;
+   }
+ 
++  /// Pfad der rotierten Vorgängerdatei, falls vorhanden.
++  static Future<String?> previousPath() async {
++    await _ensure();
++    final f = _file;
++    if (f == null) return null;
++    final old = File('${f.path}.1');
++    return await old.exists() ? old.path : null;
++  }
++
++  /// Aktuelle Größe (Bytes) der aktiven Datei inkl. Puffer.
++  static Future<int> sizeBytes() async {
++    await _ensure();
++    return _size + _bufBytes;
++  }
++
++  static int get droppedLines => _dropped;
++
+   static Future<void> clear() async {
+     await _ensure();
++    _buf.clear();
++    _bufBytes = 0;
+     try {
+       await _file?.writeAsString('');
++      _size = 0;
++      final old = File('${_file!.path}.1');
++      if (await old.exists()) await old.delete();
+     } catch (_) {}
+   }
+ }
+diff --git a/lib/sync/sync_policy.dart b/lib/sync/sync_policy.dart
+index b4eb7d0..1729e17 100644
+--- a/lib/sync/sync_policy.dart
++++ b/lib/sync/sync_policy.dart
+@@ -13,7 +13,13 @@
+ import 'dart:math' as math;
+ 
+ // ── timing constants (seconds) ────────────────────────────────────────────────
+-const int kBackfillIntervalSeconds = 900; // re-offload every 15 min (periodic)
++const int kBackfillIntervalSeconds = 900; // upstream default (15 min)
++
++/// CM Health v2.3.0: Abruftakt der Flash-Daten, vom Nutzer einstellbar
++/// (5/10/15 min; Standard 5 min — Nachholen morgens war zu langsam). Wird von
++/// AppState aus den Einstellungen gesetzt; BleEngine liest ihn beim Anlegen
++/// des Periodik-Timers und BackfillPolicy als Untergrenze.
++int cmBackfillIntervalSeconds = 300;
+ const int kKeepAliveIntervalSeconds =
+     30; // re-arm realtime, poll battery, watchdog
+ const int kBackfillIdleTimeoutSeconds = 60; // strap went silent mid-offload
+@@ -53,6 +59,11 @@ bool isLinkStale(Duration sinceLastRx) =>
+ 
+ // ── plausibility gates (unix seconds) ────────────────────────────────────────
+ const int kMinPlausibleUnix = 1700000000; // 2023-11 floor
++/// CM Health v2.3.0: Zeitstempel-Gate — Datensätze, die älter als 60 Tage sind,
++/// werden nicht mehr eingelagert (Band-Uhr-Artefakte nach internen Neustarts
++/// erzeugten Geister-Tage wie 2025-05-11; der 2023-Boden ließ sie durch).
++/// 60 Tage sind mehr als das Band je im Flash puffern kann.
++const int kCmMaxRecordAgeSeconds = 60 * 86400;
+ const int kFutureMargin = 86400; // +1 day
+ const int kSessionRangeMargin =
+     7 * 86400; // ±7 days around the strap's own range
+@@ -68,6 +79,7 @@ bool isPlausibleUnix(
+   int? sessionNewestUnix,
+ }) {
+   if (ts < kMinPlausibleUnix || ts > wallNow + kFutureMargin) return false;
++  if (ts < wallNow - kCmMaxRecordAgeSeconds) return false; // CM v2.3.0
+   if (sessionOldestUnix != null && sessionNewestUnix != null) {
+     if (sessionOldestUnix >= kMinPlausibleUnix &&
+         sessionNewestUnix >= sessionOldestUnix) {
+@@ -189,10 +201,13 @@ enum BackfillTrigger {
+ }
+ 
+ class BackfillPolicy {
+-  static const double periodicFloorSeconds = 900.0;
++  /// CM Health: folgt dem einstellbaren Abruftakt (upstream fest 900 s).
++  static double get periodicFloorSeconds => cmBackfillIntervalSeconds.toDouble();
+   static const double eventFloorSeconds = 90.0;
+   static const int emptyBackoffThreshold = 3;
+-  static const double maxEmptyBackoff = 4.0;
++  /// CM Health v2.3.0: Backoff bei leeren Abrufen auf ×2 begrenzt (upstream ×4
++  /// = bis zu 60 min Takt nach ein paar mageren Abrufen im Morgen-Kriechgang).
++  static const double maxEmptyBackoff = 2.0;
+ 
+   /// Whether an offload [trigger] should actually run now, given the last run
+   /// time and a streak of consecutive empty offloads (exponential backoff once
