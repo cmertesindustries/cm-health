@@ -1,0 +1,1233 @@
+diff --git a/lib/report/cm_pdf.dart b/lib/report/cm_pdf.dart
+new file mode 100644
+index 0000000..237f154
+--- /dev/null
++++ b/lib/report/cm_pdf.dart
+@@ -0,0 +1,268 @@
++// CM Health v2.3.0 — Minimaler PDF-Schreiber ohne Fremdpaket.
++//
++// Erzeugt PDF 1.4 mit den Standard-14-Schriften Helvetica/Helvetica-Bold
++// (WinAnsi-Kodierung → Umlaute/ß funktionieren ohne Font-Einbettung) und
++// einfachen Vektor-Operationen (Linien, Rechtecke, Polygone, Text). Reicht für
++// die Herzreport-Seiten (Diagramme + Tabellen) und hält die App frei von einer
++// PDF-Bibliothek, die sich in der Build-Umgebung nicht prüfen ließe.
++//
++// Koordinaten: PDF-Standard (Ursprung unten links, Punkte, 1 pt = 1/72 Zoll).
++// Bequemer ist [CmPdfPage.y], das von oben misst.
++
++import 'dart:typed_data';
++
++class CmPdfColor {
++  final double r, g, b; // 0..1
++  const CmPdfColor(this.r, this.g, this.b);
++  factory CmPdfColor.hex(int rgb) => CmPdfColor(
++        ((rgb >> 16) & 0xff) / 255.0,
++        ((rgb >> 8) & 0xff) / 255.0,
++        (rgb & 0xff) / 255.0,
++      );
++  String get _ops => '${_f(r)} ${_f(g)} ${_f(b)}';
++}
++
++String _f(double v) {
++  if (v == v.roundToDouble()) return v.toInt().toString();
++  var s = v.toStringAsFixed(2);
++  // 1.50 → 1.5, 0.00 → 0
++  if (s.contains('.')) {
++    s = s.replaceFirst(RegExp(r'0+$'), '');
++    if (s.endsWith('.')) s = s.substring(0, s.length - 1);
++  }
++  return s;
++}
++
++class CmPdfPage {
++  final double width;
++  final double height;
++  final StringBuffer _ops = StringBuffer();
++
++  CmPdfPage({this.width = 595.28, this.height = 841.89});
++
++  /// Von oben gemessene y-Koordinate → PDF-y.
++  double y(double fromTop) => height - fromTop;
++
++  void setFill(CmPdfColor c) => _ops.writeln('${c._ops} rg');
++  void setStroke(CmPdfColor c) => _ops.writeln('${c._ops} RG');
++  void setLineWidth(double w) => _ops.writeln('${_f(w)} w');
++
++  /// Rechteck (x, yTop von oben, w, h) füllen.
++  void fillRect(double x, double yTop, double w, double h) {
++    _ops.writeln('${_f(x)} ${_f(y(yTop) - h)} ${_f(w)} ${_f(h)} re f');
++  }
++
++  void strokeRect(double x, double yTop, double w, double h) {
++    _ops.writeln('${_f(x)} ${_f(y(yTop) - h)} ${_f(w)} ${_f(h)} re S');
++  }
++
++  /// Linie zwischen zwei Punkten (y von oben).
++  void line(double x1, double y1, double x2, double y2) {
++    _ops.writeln('${_f(x1)} ${_f(y(y1))} m ${_f(x2)} ${_f(y(y2))} l S');
++  }
++
++  /// Polylinie (y von oben). Punkte als [x, y]-Paare.
++  void polyline(List<double> xs, List<double> ys) {
++    if (xs.length < 2) return;
++    _ops.write('${_f(xs[0])} ${_f(y(ys[0]))} m ');
++    for (var i = 1; i < xs.length; i++) {
++      _ops.write('${_f(xs[i])} ${_f(y(ys[i]))} l ');
++    }
++    _ops.writeln('S');
++  }
++
++  /// Gefülltes Polygon (y von oben).
++  void fillPolygon(List<double> xs, List<double> ys) {
++    if (xs.length < 3) return;
++    _ops.write('${_f(xs[0])} ${_f(y(ys[0]))} m ');
++    for (var i = 1; i < xs.length; i++) {
++      _ops.write('${_f(xs[i])} ${_f(y(ys[i]))} l ');
++    }
++    _ops.writeln('h f');
++  }
++
++  /// Viele kurze vertikale Striche (Tachogramm) in einem Pfad.
++  void vlines(List<double> xs, List<double> y1s, List<double> y2s) {
++    if (xs.isEmpty) return;
++    for (var i = 0; i < xs.length; i++) {
++      _ops.write(
++          '${_f(xs[i])} ${_f(y(y1s[i]))} m ${_f(xs[i])} ${_f(y(y2s[i]))} l ');
++      if (i % 200 == 199) _ops.writeln('S');
++    }
++    _ops.writeln('S');
++  }
++
++  /// Text; Grundlinie bei yBaseline (von oben). [align]: 0 links, 1 Mitte,
++  /// 2 rechts (nutzt die Helvetica-Breitentabelle für die Ausrichtung).
++  void text(String s, double x, double yBaseline,
++      {double size = 10, bool bold = false, int align = 0}) {
++    var xx = x;
++    if (align != 0) {
++      final w = textWidth(s, size, bold: bold);
++      xx = align == 1 ? x - w / 2 : x - w;
++    }
++    _ops.writeln('BT /${bold ? "F2" : "F1"} ${_f(size)} Tf '
++        '${_f(xx)} ${_f(y(yBaseline))} Td (${_escape(s)}) Tj ET');
++  }
++
++  static String _escape(String s) {
++    final b = StringBuffer();
++    for (final cu in s.runes) {
++      final c = _toWinAnsi(cu);
++      if (c == 0x28 || c == 0x29 || c == 0x5c) {
++        b.write('\\');
++        b.writeCharCode(c);
++      } else if (c < 32 || c > 126) {
++        b.write('\\${c.toRadixString(8).padLeft(3, '0')}');
++      } else {
++        b.writeCharCode(c);
++      }
++    }
++    return b.toString();
++  }
++
++  static int _toWinAnsi(int cu) {
++    if (cu < 128) return cu;
++    if (cu >= 160 && cu <= 255) return cu; // Latin-1 ⊂ WinAnsi
++    switch (cu) {
++      case 0x20AC:
++        return 0x80; // €
++      case 0x2013:
++        return 0x96; // –
++      case 0x2014:
++        return 0x97; // —
++      case 0x201E:
++        return 0x84; // „
++      case 0x201C:
++        return 0x93; // “
++      case 0x201D:
++        return 0x94; // ”
++      case 0x2018:
++        return 0x91;
++      case 0x2019:
++        return 0x92;
++      case 0x2022:
++        return 0x95; // •
++      case 0x2026:
++        return 0x85; // …
++      case 0x2264:
++        return 0x3C; // ≤ → <
++      case 0x2265:
++        return 0x3E; // ≥ → >
++      case 0x2260:
++        return 0x23; // ≠ → #
++      case 0x2206:
++      case 0x0394:
++        return 0x44; // Δ → D
++      default:
++        return 0x3F; // ?
++    }
++  }
++
++  /// Textbreite in pt (Helvetica-Metriken, Näherung für Bold über Faktor).
++  static double textWidth(String s, double size, {bool bold = false}) {
++    var w = 0;
++    for (final cu in s.runes) {
++      final c = _toWinAnsi(cu);
++      w += _helveticaWidth(c);
++    }
++    return w / 1000.0 * size * (bold ? 1.04 : 1.0);
++  }
++
++  static int _helveticaWidth(int c) {
++    // Standard-Helvetica-AFM (ausgewählt); Rest 556.
++    const narrow = {
++      0x20: 278, 0x21: 278, 0x27: 191, 0x28: 333, 0x29: 333, 0x2c: 278,
++      0x2d: 333, 0x2e: 278, 0x2f: 278, 0x3a: 278, 0x3b: 278, 0x49: 278,
++      0x4a: 500, 0x66: 278, 0x69: 222, 0x6a: 222, 0x6c: 222, 0x72: 333,
++      0x74: 278, 0x7c: 260, 0x5b: 278, 0x5d: 278, 0xb0: 400, 0x2a: 389,
++    };
++    const wide = {
++      0x41: 667, 0x42: 667, 0x43: 722, 0x44: 722, 0x45: 667, 0x46: 611,
++      0x47: 778, 0x48: 722, 0x4b: 667, 0x4c: 556, 0x4d: 833, 0x4e: 722,
++      0x4f: 778, 0x50: 667, 0x51: 778, 0x52: 722, 0x53: 667, 0x54: 611,
++      0x55: 722, 0x56: 667, 0x57: 944, 0x58: 667, 0x59: 667, 0x5a: 611,
++      0x6d: 833, 0x77: 722, 0x25: 889, 0x40: 1015, 0x26: 667, 0xc4: 667,
++      0xd6: 778, 0xdc: 722,
++    };
++    if (narrow.containsKey(c)) return narrow[c]!;
++    if (wide.containsKey(c)) return wide[c]!;
++    return 556;
++  }
++
++  String get _content => _ops.toString();
++}
++
++class CmPdfDocument {
++  final List<CmPdfPage> pages = [];
++  final String title;
++  final String author;
++
++  CmPdfDocument({this.title = 'CM Health', this.author = 'CM Health'});
++
++  CmPdfPage addPage({double width = 595.28, double height = 841.89}) {
++    final p = CmPdfPage(width: width, height: height);
++    pages.add(p);
++    return p;
++  }
++
++  /// Serialisiert das Dokument (Latin-1-Bytes; Umlaute sind WinAnsi-kodiert).
++  Uint8List build() {
++    final out = BytesBuilder(copy: false);
++    final offsets = <int>[];
++    void obj(int n, String body) {
++      offsets.add(out.length);
++      out.add(_latin1('$n 0 obj\n$body\nendobj\n'));
++    }
++
++    out.add(_latin1('%PDF-1.4\n%âãÏÓ\n'));
++    // 1 Catalog, 2 Pages, 3 Font F1, 4 Font F2, 5 Info, dann je Seite 2 Objekte.
++    final firstPageObj = 6;
++    final kids = <String>[];
++    for (var i = 0; i < pages.length; i++) {
++      kids.add('${firstPageObj + i * 2} 0 R');
++    }
++    obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
++    obj(2, '<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pages.length} >>');
++    obj(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica '
++        '/Encoding /WinAnsiEncoding >>');
++    obj(4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold '
++        '/Encoding /WinAnsiEncoding >>');
++    obj(5, '<< /Title (${CmPdfPage._escape(title)}) '
++        '/Author (${CmPdfPage._escape(author)}) '
++        '/Producer (CM Health) >>');
++    for (var i = 0; i < pages.length; i++) {
++      final p = pages[i];
++      final pageObj = firstPageObj + i * 2;
++      final contentObj = pageObj + 1;
++      obj(pageObj,
++          '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${_f(p.width)} ${_f(p.height)}] '
++          '/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> '
++          '/Contents $contentObj 0 R >>');
++      final content = _latin1(p._content);
++      offsets.add(out.length);
++      out.add(_latin1('$contentObj 0 obj\n<< /Length ${content.length} >>\nstream\n'));
++      out.add(content);
++      out.add(_latin1('\nendstream\nendobj\n'));
++    }
++    final xref = out.length;
++    final n = offsets.length + 1;
++    final sb = StringBuffer('xref\n0 $n\n0000000000 65535 f \n');
++    for (final o in offsets) {
++      sb.write('${o.toString().padLeft(10, '0')} 00000 n \n');
++    }
++    sb.write('trailer\n<< /Size $n /Root 1 0 R /Info 5 0 R >>\n'
++        'startxref\n$xref\n%%EOF\n');
++    out.add(_latin1(sb.toString()));
++    return out.takeBytes();
++  }
++
++  static Uint8List _latin1(String s) {
++    final b = Uint8List(s.length);
++    for (var i = 0; i < s.length; i++) {
++      final c = s.codeUnitAt(i);
++      b[i] = c <= 0xff ? c : 0x3f;
++    }
++    return b;
++  }
++}
+diff --git a/lib/report/heart_report.dart b/lib/report/heart_report.dart
+new file mode 100644
+index 0000000..a19e649
+--- /dev/null
++++ b/lib/report/heart_report.dart
+@@ -0,0 +1,670 @@
++// CM Health v2.3.0 — Herzreport (Tagesbericht im Langzeit-EKG-Stil).
++//
++// Baut aus den 1-Hz-Pulswerten und den Schlag-zu-Schlag-Intervallen (RR) eines
++// Kalendertags ein zweiseitiges PDF (24-h-Pulsband, Stundentabelle,
++// Tachogramm, RR-Histogramm, Kennzahlen) plus zwei CSV-Rohdatendateien.
++// Rechnet ohne Isolate — ~90.000 Zeilen sind in wenigen hundert ms erledigt.
++//
++// WICHTIG (steht auch im Bericht): Das Band misst optisch (PPG) am
++// Handgelenk, nicht elektrisch — die Intervalle sind Pulswellen-, keine
++// EKG-Intervalle. Keine diagnostische Aussage.
++
++import 'dart:io';
++import 'dart:math' as math;
++
++import 'package:path_provider/path_provider.dart';
++
++import '../data/db.dart';
++import '../data/day_label.dart';
++import 'cm_pdf.dart';
++
++class HeartReportFiles {
++  final String? pdfPath;
++  final String? csvHrPath;
++  final String? csvRrPath;
++  final HeartReportStats stats;
++  const HeartReportFiles({
++    required this.pdfPath,
++    required this.csvHrPath,
++    required this.csvRrPath,
++    required this.stats,
++  });
++}
++
++class HeartReportStats {
++  final String dayId;
++  final int samples; // 1-Hz-Werte mit Puls > 0
++  final double coverage; // 0..1
++  final double meanBpm;
++  final int minBpm;
++  final int minAtSec;
++  final int maxBpm;
++  final int maxAtSec;
++  final int medianBpm;
++  final int beats; // RR-Intervalle nach Filter
++  final int longBeats; // RR >= 2000 ms
++  final double? nightRmssd; // ms, 00–05 Uhr, gefiltert
++  final int nightRmssdPairs;
++  const HeartReportStats({
++    required this.dayId,
++    required this.samples,
++    required this.coverage,
++    required this.meanBpm,
++    required this.minBpm,
++    required this.minAtSec,
++    required this.maxBpm,
++    required this.maxAtSec,
++    required this.medianBpm,
++    required this.beats,
++    required this.longBeats,
++    required this.nightRmssd,
++    required this.nightRmssdPairs,
++  });
++}
++
++class _MinuteAgg {
++  int count = 0;
++  int min = 999;
++  int max = 0;
++  int sum = 0;
++}
++
++class HeartReport {
++  static const _blue = CmPdfColor(0.165, 0.47, 0.84); // #2a78d6
++  static const _band = CmPdfColor(0.804, 0.886, 0.984); // #cde2fb
++  static const _red = CmPdfColor(0.816, 0.231, 0.231); // #d03b3b
++  static const _grid = CmPdfColor(0.9, 0.9, 0.9);
++  static const _axis = CmPdfColor(0.6, 0.6, 0.6);
++  static const _ink = CmPdfColor(0.1, 0.1, 0.1);
++  static const _muted = CmPdfColor(0.42, 0.42, 0.42);
++  static const _tile = CmPdfColor(0.965, 0.965, 0.96);
++  static const _white = CmPdfColor(1, 1, 1);
++
++  static const _weekdays = [
++    'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag',
++    'Sonntag',
++  ];
++
++  /// Erzeugt die gewünschten Dateien im Temp-Verzeichnis und liefert Pfade.
++  static Future<HeartReportFiles> build({
++    required String dayId,
++    bool pdf = true,
++    bool csvHr = true,
++    bool csvRr = true,
++    void Function(String)? progress,
++  }) async {
++    final startSec = localDayStartSec(dayId);
++    final endSec = localDayEndSec(dayId);
++    if (startSec == null || endSec == null) {
++      throw ArgumentError('Ungültiges Datum: $dayId');
++    }
++    progress?.call('Lade Pulswerte …');
++    final db = await LocalDb.instance;
++    final hrRows = await db.rawQuery(
++      'SELECT rec_ts, hr FROM decoded_onehz '
++      'WHERE rec_ts >= ? AND rec_ts < ? AND hr > 0 ORDER BY rec_ts',
++      [startSec, endSec],
++    );
++    if (hrRows.isEmpty) {
++      throw StateError('Keine Pulsdaten für diesen Tag vorhanden.');
++    }
++    final hrTs = List<int>.filled(hrRows.length, 0);
++    final hrBpm = List<int>.filled(hrRows.length, 0);
++    for (var i = 0; i < hrRows.length; i++) {
++      hrTs[i] = (hrRows[i]['rec_ts'] as num).toInt();
++      hrBpm[i] = (hrRows[i]['hr'] as num).toInt();
++    }
++    progress?.call('Lade Herzschläge …');
++    final rrRows = await db.rawQuery(
++      'SELECT rr_ts_ms, rr_ms FROM decoded_rr '
++      'WHERE rr_ts_ms >= ? AND rr_ts_ms < ? AND rr_ms BETWEEN 250 AND 3500 '
++      'ORDER BY rr_ts_ms',
++      [startSec * 1000, endSec * 1000],
++    );
++    final rrTs = List<int>.filled(rrRows.length, 0);
++    final rrMs = List<int>.filled(rrRows.length, 0);
++    for (var i = 0; i < rrRows.length; i++) {
++      rrTs[i] = (rrRows[i]['rr_ts_ms'] as num).toInt();
++      rrMs[i] = (rrRows[i]['rr_ms'] as num).toInt();
++    }
++
++    progress?.call('Berechne Kennzahlen …');
++    final daySec = endSec - startSec; // 86400 (DST-Tage: 82800/90000)
++    final minutes = daySec ~/ 60;
++    final perMin = List.generate(minutes, (_) => _MinuteAgg());
++    var sum = 0;
++    var minBpm = 999, minAt = startSec, maxBpm = 0, maxAt = startSec;
++    for (var i = 0; i < hrTs.length; i++) {
++      final v = hrBpm[i];
++      final m = ((hrTs[i] - startSec) ~/ 60).clamp(0, minutes - 1);
++      final a = perMin[m];
++      a.count++;
++      a.sum += v;
++      if (v < a.min) a.min = v;
++      if (v > a.max) a.max = v;
++      sum += v;
++      if (v < minBpm) {
++        minBpm = v;
++        minAt = hrTs[i];
++      }
++      if (v > maxBpm) {
++        maxBpm = v;
++        maxAt = hrTs[i];
++      }
++    }
++    final sorted = List<int>.from(hrBpm)..sort();
++    final median = sorted[sorted.length ~/ 2];
++    final mean = sum / hrTs.length;
++    final coverage = hrTs.length / daySec;
++
++    // Nacht-RMSSD 00–05 Uhr (RR 300–1800 ms, |ΔRR| < 250 ms).
++    final nightEnd = (startSec + 5 * 3600) * 1000;
++    var sq = 0.0;
++    var pairs = 0;
++    var longBeats = 0;
++    for (var i = 0; i < rrMs.length; i++) {
++      if (rrMs[i] >= 2000) longBeats++;
++      if (i == 0 || rrTs[i] >= nightEnd) continue;
++      final a = rrMs[i - 1], b = rrMs[i];
++      if (a < 300 || a > 1800 || b < 300 || b > 1800) continue;
++      final d = (b - a).abs();
++      if (d >= 250) continue;
++      // Nur direkt aufeinanderfolgende Schläge (Lücke < 3 s).
++      if (rrTs[i] - rrTs[i - 1] > 3000) continue;
++      sq += d * d;
++      pairs++;
++    }
++    final rmssd = pairs >= 100 ? math.sqrt(sq / pairs) : null;
++
++    final stats = HeartReportStats(
++      dayId: dayId,
++      samples: hrTs.length,
++      coverage: coverage,
++      meanBpm: mean,
++      minBpm: minBpm,
++      minAtSec: minAt,
++      maxBpm: maxBpm,
++      maxAtSec: maxAt,
++      medianBpm: median,
++      beats: rrMs.length,
++      longBeats: longBeats,
++      nightRmssd: rmssd,
++      nightRmssdPairs: pairs,
++    );
++
++    final dir = await getTemporaryDirectory();
++    String? pdfPath, hrPath, rrPath;
++    if (pdf) {
++      progress?.call('Zeichne PDF …');
++      final doc = CmPdfDocument(title: 'CM Health Herzreport $dayId');
++      _pageOverview(doc, stats, perMin, startSec, minutes);
++      _pageBeats(doc, stats, rrTs, rrMs, startSec, daySec);
++      final f = File('${dir.path}/cm-herzreport-$dayId.pdf');
++      await f.writeAsBytes(doc.build(), flush: true);
++      pdfPath = f.path;
++    }
++    if (csvHr) {
++      progress?.call('Schreibe 1-Hz-CSV …');
++      final f = File('${dir.path}/cm-herzfrequenz-1hz-$dayId.csv');
++      final sink = f.openWrite();
++      sink.writeln('epoch_s,zeit_lokal,puls_bpm');
++      for (var i = 0; i < hrTs.length; i++) {
++        sink.writeln('${hrTs[i]},${_fmtLocal(hrTs[i] * 1000)},${hrBpm[i]}');
++      }
++      await sink.flush();
++      await sink.close();
++      hrPath = f.path;
++    }
++    if (csvRr) {
++      progress?.call('Schreibe RR-CSV …');
++      final f = File('${dir.path}/cm-herzschlaege-rr-$dayId.csv');
++      final sink = f.openWrite();
++      sink.writeln('epoch_ms,zeit_lokal,rr_ms,momentan_bpm');
++      for (var i = 0; i < rrTs.length; i++) {
++        final bpm = (60000 / rrMs[i]).toStringAsFixed(1);
++        sink.writeln(
++            '${rrTs[i]},${_fmtLocal(rrTs[i], ms: true)},${rrMs[i]},$bpm');
++      }
++      await sink.flush();
++      await sink.close();
++      rrPath = f.path;
++    }
++    return HeartReportFiles(
++      pdfPath: pdfPath,
++      csvHrPath: hrPath,
++      csvRrPath: rrPath,
++      stats: stats,
++    );
++  }
++
++  // ── Formatierung ──────────────────────────────────────────────────────────
++  static String _two(int v) => v.toString().padLeft(2, '0');
++
++  static String _fmtLocal(int epochMs, {bool ms = false}) {
++    final d = DateTime.fromMillisecondsSinceEpoch(epochMs).toLocal();
++    final base = '${d.year}-${_two(d.month)}-${_two(d.day)} '
++        '${_two(d.hour)}:${_two(d.minute)}:${_two(d.second)}';
++    return ms ? '$base.${d.millisecond.toString().padLeft(3, '0')}' : base;
++  }
++
++  static String _hm(int epochSec) {
++    final d = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000).toLocal();
++    return '${_two(d.hour)}:${_two(d.minute)}';
++  }
++
++  static String _dayTitle(String dayId) {
++    final p = dayId.split('-');
++    final d = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
++    return '${_weekdays[d.weekday - 1]}, ${_two(d.day)}.${_two(d.month)}.${d.year}';
++  }
++
++  static String _nowText() {
++    final d = DateTime.now();
++    return '${_two(d.day)}.${_two(d.month)}.${d.year} ${_two(d.hour)}:${_two(d.minute)}';
++  }
++
++  // ── Seite 1: Übersicht ────────────────────────────────────────────────────
++  static void _pageOverview(CmPdfDocument doc, HeartReportStats s,
++      List<_MinuteAgg> perMin, int startSec, int minutes) {
++    final p = doc.addPage();
++    _header(p, s.dayId, 1, 2);
++
++    // KPI-Kacheln
++    final kpis = <(String, String, String)>[
++      ('Ø PULS', '${s.meanBpm.round()}', 'bpm · Median ${s.medianBpm}'),
++      ('MINIMUM', '${s.minBpm}', 'bpm um ${_hm(s.minAtSec)}'),
++      ('MAXIMUM', '${s.maxBpm}', 'bpm um ${_hm(s.maxAtSec)}'),
++      ('ABDECKUNG', '${(s.coverage * 100).round()} %',
++          '${(s.samples / 3600).toStringAsFixed(1)} h Messwerte'),
++      ('NACHT-RMSSD', s.nightRmssd == null ? '–' : '${s.nightRmssd!.round()}',
++          s.nightRmssd == null ? 'zu wenig Daten' : 'ms · 00–05 Uhr'),
++    ];
++    const left = 40.0, right = 555.0;
++    final tileW = (right - left - 4 * 8) / 5;
++    for (var i = 0; i < kpis.length; i++) {
++      final x = left + i * (tileW + 8);
++      p.setFill(_tile);
++      p.fillRect(x, 88, tileW, 62);
++      p.setFill(_muted);
++      p.text(kpis[i].$1, x + 8, 103, size: 7);
++      p.setFill(_ink);
++      p.text(kpis[i].$2, x + 8, 127, size: 20, bold: true);
++      p.setFill(_muted);
++      p.text(kpis[i].$3, x + 8, 141, size: 7);
++    }
++
++    // 24-h-Pulsband (Minute: min–max als Band, Mittel als Linie)
++    p.setFill(_ink);
++    p.text('Puls über 24 Stunden', left, 176, size: 11, bold: true);
++    p.setFill(_muted);
++    p.text('Band = Minuten-Minimum bis -Maximum, Linie = Minutenmittel',
++        right, 176, size: 7, align: 2);
++    const cx0 = 68.0, cx1 = 555.0, cy0 = 188.0, cy1 = 388.0;
++    var yMin = 999, yMax = 0;
++    for (final a in perMin) {
++      if (a.count == 0) continue;
++      if (a.min < yMin) yMin = a.min;
++      if (a.max > yMax) yMax = a.max;
++    }
++    if (yMax == 0) {
++      yMin = 40;
++      yMax = 120;
++    }
++    yMin = ((yMin - 5) ~/ 10) * 10;
++    yMax = ((yMax + 14) ~/ 10) * 10;
++    if (yMax - yMin < 40) yMax = yMin + 40;
++    double xOf(double minute) => cx0 + (cx1 - cx0) * minute / minutes;
++    double yOf(num bpm) => cy1 - (cy1 - cy0) * (bpm - yMin) / (yMax - yMin);
++    _chartFrame(p, cx0, cy0, cx1, cy1, yMin, yMax, 20, minutes ~/ 60,
++        (h) => '${_two(h)}:00', 'bpm');
++    // Segmente zusammenhängender Minuten
++    var i = 0;
++    while (i < minutes) {
++      if (perMin[i].count == 0) {
++        i++;
++        continue;
++      }
++      var j = i;
++      while (j + 1 < minutes && perMin[j + 1].count > 0) {
++        j++;
++      }
++      final n = j - i + 1;
++      final xs = <double>[], top = <double>[], bot = <double>[], mean = <double>[];
++      for (var k = i; k <= j; k++) {
++        xs.add(xOf(k + 0.5));
++        top.add(yOf(perMin[k].max));
++        bot.add(yOf(perMin[k].min));
++        mean.add(yOf(perMin[k].sum / perMin[k].count));
++      }
++      if (n >= 2) {
++        final px = [...xs, ...xs.reversed];
++        final py = [...top, ...bot.reversed];
++        p.setFill(_band);
++        p.fillPolygon(px, py);
++        p.setStroke(_blue);
++        p.setLineWidth(0.8);
++        p.polyline(xs, mean);
++      } else {
++        p.setStroke(_blue);
++        p.setLineWidth(1.2);
++        p.line(xs[0], top[0], xs[0], bot[0]);
++      }
++      i = j + 1;
++    }
++
++    // Stundentabelle
++    p.setFill(_ink);
++    p.text('Stundenübersicht', left, 418, size: 11, bold: true);
++    final cols = <(String, double, int)>[
++      ('Stunde', left, 0),
++      ('Messwerte', 150, 2),
++      ('Abdeckung', 230, 2),
++      ('Ø bpm', 300, 2),
++      ('Min', 360, 2),
++      ('Max', 420, 2),
++      ('Verlauf', 445, 0),
++    ];
++    var ty = 434.0;
++    p.setFill(_muted);
++    for (final c in cols) {
++      p.text(c.$1, c.$2, ty, size: 7, align: c.$3);
++    }
++    ty += 5;
++    p.setStroke(_grid);
++    p.setLineWidth(0.5);
++    p.line(left, ty, right, ty);
++    final hours = minutes ~/ 60;
++    final rowH = (760 - ty - 4) / hours;
++    var globalMin = 999, globalMax = 0;
++    for (final a in perMin) {
++      if (a.count == 0) continue;
++      globalMin = math.min(globalMin, a.min);
++      globalMax = math.max(globalMax, a.max);
++    }
++    if (globalMax <= globalMin) globalMax = globalMin + 1;
++    for (var h = 0; h < hours; h++) {
++      var cnt = 0, mn = 999, mx = 0, sm = 0;
++      for (var m = h * 60; m < (h + 1) * 60 && m < minutes; m++) {
++        final a = perMin[m];
++        if (a.count == 0) continue;
++        cnt += a.count;
++        sm += a.sum;
++        mn = math.min(mn, a.min);
++        mx = math.max(mx, a.max);
++      }
++      final base = ty + rowH * (h + 1) - 3;
++      if (h.isOdd) {
++        p.setFill(_tile);
++        p.fillRect(left, ty + rowH * h + 1, right - left, rowH - 1);
++      }
++      p.setFill(_ink);
++      p.text('${_two(h)}–${_two(h + 1)} Uhr', left + 2, base, size: 8);
++      if (cnt == 0) {
++        p.setFill(_muted);
++        p.text('keine Daten', 150, base, size: 8, align: 2);
++        continue;
++      }
++      p.text('$cnt', 150, base, size: 8, align: 2);
++      p.text('${(cnt / 36).round()} %', 230, base, size: 8, align: 2);
++      p.text('${(sm / cnt).round()}', 300, base, size: 8, align: 2);
++      p.text('$mn', 360, base, size: 8, align: 2);
++      p.text('$mx', 420, base, size: 8, align: 2);
++      // Mini-Balken min–max relativ zum Tagesbereich
++      const bx0 = 445.0, bx1 = 555.0;
++      double bx(int v) => bx0 + (bx1 - bx0) * (v - globalMin) / (globalMax - globalMin);
++      p.setFill(_band);
++      p.fillRect(bx(mn), base - 6, math.max(1.5, bx(mx) - bx(mn)), 6);
++      p.setFill(_blue);
++      final meanX = bx((sm / cnt).round());
++      p.fillRect(meanX - 0.75, base - 7, 1.5, 8);
++    }
++    _footer(p);
++  }
++
++  // ── Seite 2: Schlag-zu-Schlag ─────────────────────────────────────────────
++  static void _pageBeats(CmPdfDocument doc, HeartReportStats s, List<int> rrTs,
++      List<int> rrMs, int startSec, int daySec) {
++    final p = doc.addPage();
++    _header(p, s.dayId, 2, 2);
++    const left = 40.0, right = 555.0;
++
++    p.setFill(_ink);
++    p.text('Tachogramm – Momentanpuls je Herzschlag', left, 92,
++        size: 11, bold: true);
++    p.setFill(_muted);
++    p.text('${s.beats} Intervalle · blau = Kernbereich (25–75 %) je 10 s, hell = Spanne, '
++        'rot = Intervall ab 2 s', right, 92, size: 7, align: 2);
++    const cx0 = 68.0, cx1 = 555.0, cy0 = 104.0, cy1 = 324.0;
++    // 10-s-Bins: Spanne (hell) und Interquartilbereich (blau) des
++    // Momentanpulses — die IQR-Darstellung hält Sensor-Ausreißer vom
++    // Kernverlauf fern, die volle Spanne bleibt als Schleier sichtbar.
++    final bins = daySec ~/ 10;
++    final binVals = List.generate(bins, (_) => <double>[]);
++    final bLong = List<bool>.filled(bins, false);
++    var yMin = 999.0, yMax = 0.0;
++    for (var i = 0; i < rrMs.length; i++) {
++      final b = ((rrTs[i] ~/ 1000 - startSec) ~/ 10).clamp(0, bins - 1);
++      if (rrMs[i] >= 2000) {
++        bLong[b] = true;
++        continue;
++      }
++      binVals[b].add(60000 / rrMs[i]);
++    }
++    final q1s = List<double>.filled(bins, 0);
++    final q3s = List<double>.filled(bins, 0);
++    final mins = List<double>.filled(bins, 0);
++    final maxs = List<double>.filled(bins, 0);
++    for (var b = 0; b < bins; b++) {
++      final v = binVals[b];
++      if (v.isEmpty) continue;
++      v.sort();
++      mins[b] = v.first;
++      maxs[b] = v.last;
++      q1s[b] = v[v.length ~/ 4];
++      q3s[b] = v[(v.length * 3) ~/ 4];
++      if (q1s[b] < yMin) yMin = q1s[b];
++      if (q3s[b] > yMax) yMax = q3s[b];
++    }
++    var lo = 30, hi = 200;
++    if (yMax > 0) {
++      lo = math.max(20, ((yMin - 5) ~/ 10) * 10);
++      hi = math.min(230, ((yMax + 14) ~/ 10) * 10);
++      if (hi - lo < 40) hi = lo + 40;
++    }
++    double xOf(int bin) => cx0 + (cx1 - cx0) * (bin + 0.5) / bins;
++    double yOf(num bpm) => cy1 - (cy1 - cy0) * (bpm - lo) / (hi - lo);
++    _chartFrame(p, cx0, cy0, cx1, cy1, lo, hi, 20, daySec ~/ 3600,
++        (h) => '${_two(h)}:00', 'bpm');
++    final xs = <double>[], y1 = <double>[], y2 = <double>[];
++    final fx = <double>[], fy1 = <double>[], fy2 = <double>[];
++    final lx = <double>[], ly1 = <double>[], ly2 = <double>[];
++    for (var b = 0; b < bins; b++) {
++      if (bLong[b]) {
++        lx.add(xOf(b));
++        ly1.add(cy1 - 6);
++        ly2.add(cy1);
++      }
++      if (binVals[b].isEmpty) continue;
++      final x = xOf(b);
++      fx.add(x);
++      fy1.add(yOf(maxs[b].clamp(lo, hi)));
++      fy2.add(yOf(mins[b].clamp(lo, hi)));
++      xs.add(x);
++      final top = yOf(q3s[b].clamp(lo, hi));
++      final bot = yOf(q1s[b].clamp(lo, hi));
++      y1.add(top);
++      y2.add((bot - top).abs() < 0.8 ? top + 0.8 : bot);
++    }
++    p.setStroke(_band);
++    p.setLineWidth(0.5);
++    p.vlines(fx, fy1, fy2);
++    p.setStroke(_blue);
++    p.setLineWidth(0.6);
++    p.vlines(xs, y1, y2);
++    if (lx.isNotEmpty) {
++      p.setStroke(_red);
++      p.setLineWidth(0.6);
++      p.vlines(lx, ly1, ly2);
++    }
++
++    // RR-Histogramm 300–2000 ms, 50-ms-Klassen
++    p.setFill(_ink);
++    p.text('Verteilung der Schlagintervalle (RR)', left, 360,
++        size: 11, bold: true);
++    p.setFill(_muted);
++    p.text('50-ms-Klassen, 300–2000 ms', right, 360, size: 7, align: 2);
++    const hx0 = 68.0, hx1 = 555.0, hy0 = 372.0, hy1 = 540.0;
++    const nb = 34;
++    final hist = List<int>.filled(nb, 0);
++    var hMax = 0;
++    for (final v in rrMs) {
++      if (v < 300 || v >= 2000) continue;
++      final b = (v - 300) ~/ 50;
++      hist[b]++;
++      if (hist[b] > hMax) hMax = hist[b];
++    }
++    p.setStroke(_axis);
++    p.setLineWidth(0.6);
++    p.line(hx0, hy1, hx1, hy1);
++    p.line(hx0, hy0, hx0, hy1);
++    final bw = (hx1 - hx0) / nb;
++    for (var b = 0; b < nb; b++) {
++      final h = hMax == 0 ? 0.0 : (hy1 - hy0 - 8) * hist[b] / hMax;
++      p.setFill(_blue);
++      if (h > 0) p.fillRect(hx0 + b * bw + 1, hy1 - h, bw - 2, h);
++      if (b % 4 == 0) {
++        p.setFill(_muted);
++        p.text('${300 + b * 50}', hx0 + b * bw, hy1 + 10, size: 7, align: 1);
++      }
++    }
++    p.setFill(_muted);
++    p.text('ms', hx1, hy1 + 10, size: 7, align: 2);
++    if (hMax > 0) {
++      p.text('$hMax', hx0 - 4, hy0 + 10, size: 7, align: 2);
++      p.text('0', hx0 - 4, hy1 + 2, size: 7, align: 2);
++    }
++
++    // Kennzahlen Schlag-zu-Schlag
++    var ky = 575.0;
++    p.setFill(_ink);
++    p.text('Kennzahlen', left, ky, size: 11, bold: true);
++    ky += 16;
++    final lines = <String>[
++      'Herzschläge erfasst: ${s.beats} (Intervalle 250–3500 ms)',
++      'Intervalle ab 2 s: ${s.longBeats} – überwiegend vom optischen Sensor verpasste Schläge, '
++          'keine echten Pausen',
++      'Nacht-RMSSD (00–05 Uhr): ${s.nightRmssd == null ? 'nicht berechenbar' : '${s.nightRmssd!.toStringAsFixed(1)} ms'} '
++          'aus ${s.nightRmssdPairs} Schlagpaaren (Filter: RR 300–1800 ms, RR-Differenz unter 250 ms)',
++      'Puls: Ø ${s.meanBpm.toStringAsFixed(1)} bpm, Median ${s.medianBpm}, '
++          'Spanne ${s.minBpm}–${s.maxBpm} bpm, Abdeckung ${(s.coverage * 100).toStringAsFixed(1)} % des Tages',
++    ];
++    for (final l in lines) {
++      p.setFill(_ink);
++      p.text('•', left, ky, size: 9);
++      for (final part in _wrap(l, 95)) {
++        p.text(part, left + 12, ky, size: 9);
++        ky += 13;
++      }
++      ky += 2;
++    }
++
++    ky += 10;
++    p.setFill(_ink);
++    p.text('Einordnung', left, ky, size: 11, bold: true);
++    ky += 16;
++    const note =
++        'Dieser Bericht beruht auf der optischen Pulsmessung (PPG) des Whoop-4.0-Bands am Handgelenk. '
++        'Er ist kein EKG: Erfasst wird die Pulswelle, nicht die elektrische Herzaktivität – Rhythmus-, '
++        'Leitungs- oder Erregungsstörungen sind daraus nicht erkennbar. Ausreißer, Lücken und lange '
++        'Intervalle entstehen überwiegend durch Bewegung, Tragesitz oder verpasste Schläge des Sensors. '
++        'Die Werte dienen der persönlichen Verlaufsbeobachtung und ersetzen keine ärztliche Untersuchung.';
++    p.setFill(_muted);
++    for (final part in _wrap(note, 105)) {
++      p.text(part, left, ky, size: 8.5);
++      ky += 12;
++    }
++    _footer(p);
++  }
++
++  // ── Bausteine ─────────────────────────────────────────────────────────────
++  static void _header(CmPdfPage p, String dayId, int page, int pages) {
++    p.setFill(_ink);
++    p.text('CM Health – Herzreport', 40, 52, size: 18, bold: true);
++    p.setFill(_muted);
++    p.text(_dayTitle(dayId), 40, 68, size: 10);
++    p.text('erstellt ${_nowText()} · Seite $page/$pages', 555, 68,
++        size: 8, align: 2);
++    p.setStroke(_blue);
++    p.setLineWidth(1.2);
++    p.line(40, 76, 555, 76);
++  }
++
++  static void _footer(CmPdfPage p) {
++    p.setStroke(_grid);
++    p.setLineWidth(0.5);
++    p.line(40, 792, 555, 792);
++    p.setFill(_muted);
++    p.text(
++        'Optische Pulsmessung (PPG) am Handgelenk – kein EKG, keine diagnostische Aussage.',
++        40, 804,
++        size: 7);
++    p.text('CM Health · Whoop 4.0 · lokal berechnet', 555, 804,
++        size: 7, align: 2);
++  }
++
++  /// Achsenrahmen mit Gitter: y-Ticks alle [yStep], x-Ticks je Stunde
++  /// (Beschriftung alle 2 h).
++  static void _chartFrame(
++      CmPdfPage p,
++      double x0,
++      double y0,
++      double x1,
++      double y1,
++      int yMin,
++      int yMax,
++      int yStep,
++      int hours,
++      String Function(int) xLabel,
++      String yUnit) {
++    p.setFill(_white);
++    p.fillRect(x0, y0, x1 - x0, y1 - y0);
++    p.setStroke(_grid);
++    p.setLineWidth(0.5);
++    for (var v = yMin; v <= yMax; v += yStep) {
++      final yy = y1 - (y1 - y0) * (v - yMin) / (yMax - yMin);
++      p.line(x0, yy, x1, yy);
++      p.setFill(_muted);
++      p.text('$v', x0 - 4, yy + 2.5, size: 7, align: 2);
++    }
++    for (var h = 0; h <= hours; h++) {
++      final xx = x0 + (x1 - x0) * h / hours;
++      p.line(xx, y0, xx, y1);
++      if (h % 2 == 0) {
++        p.setFill(_muted);
++        p.text(xLabel(h == hours ? 0 : h), xx, y1 + 10, size: 7, align: 1);
++      }
++    }
++    p.setStroke(_axis);
++    p.setLineWidth(0.6);
++    p.line(x0, y1, x1, y1);
++    p.line(x0, y0, x0, y1);
++    p.setFill(_muted);
++    p.text(yUnit, x0 - 4, y0 - 3, size: 7, align: 2);
++  }
++
++  static List<String> _wrap(String s, int maxChars) {
++    final words = s.split(' ');
++    final out = <String>[];
++    var cur = StringBuffer();
++    for (final w in words) {
++      if (cur.length + w.length + 1 > maxChars && cur.isNotEmpty) {
++        out.add(cur.toString());
++        cur = StringBuffer();
++      }
++      if (cur.isNotEmpty) cur.write(' ');
++      cur.write(w);
++    }
++    if (cur.isNotEmpty) out.add(cur.toString());
++    return out;
++  }
++}
+diff --git a/lib/ui/report/heart_report_screen.dart b/lib/ui/report/heart_report_screen.dart
+new file mode 100644
+index 0000000..238735d
+--- /dev/null
++++ b/lib/ui/report/heart_report_screen.dart
+@@ -0,0 +1,277 @@
++// CM Health v2.3.0 — Herzreport exportieren.
++//
++// Tag wählen, Dateien ankreuzen (PDF-Bericht, 1-Hz-CSV, RR-CSV), erstellen,
++// teilen. Der Bericht wird komplett lokal aus der Datenbank gerechnet
++// (lib/report/heart_report.dart); nichts verlässt das Handy, außer man teilt.
++
++import 'package:flutter/material.dart';
++import 'package:share_plus/share_plus.dart';
++
++import '../../report/heart_report.dart';
++import '../../theme/theme.dart';
++import '../../theme/tokens.dart';
++import '../design/design.dart';
++import '../kit/kit.dart';
++
++class HeartReportScreen extends StatefulWidget {
++  const HeartReportScreen({super.key});
++
++  @override
++  State<HeartReportScreen> createState() => _HeartReportScreenState();
++}
++
++class _HeartReportScreenState extends State<HeartReportScreen> {
++  late DateTime _day;
++  bool _pdf = true;
++  bool _csvHr = true;
++  bool _csvRr = true;
++  bool _busy = false;
++  String _progress = '';
++  HeartReportStats? _last;
++  String? _error;
++
++  @override
++  void initState() {
++    super.initState();
++    final now = DateTime.now();
++    // Vor 12 Uhr ist der Vortag meist der interessantere (vollständige) Tag.
++    _day = now.hour < 12
++        ? DateTime(now.year, now.month, now.day - 1)
++        : DateTime(now.year, now.month, now.day);
++  }
++
++  String get _dayId => dayIdOf(_day);
++
++  static String dayIdOf(DateTime d) =>
++      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
++
++  Future<void> _pickDay() async {
++    final now = DateTime.now();
++    final picked = await showDatePicker(
++      context: context,
++      initialDate: _day,
++      firstDate: DateTime(2026, 8, 1),
++      lastDate: DateTime(now.year, now.month, now.day),
++      helpText: 'Tag für den Herzreport',
++    );
++    if (picked != null) {
++      setState(() {
++        _day = DateTime(picked.year, picked.month, picked.day);
++        _last = null;
++        _error = null;
++      });
++    }
++  }
++
++  Future<void> _run() async {
++    if (_busy || (!_pdf && !_csvHr && !_csvRr)) return;
++    final origin = shareOriginFor(context);
++    setState(() {
++      _busy = true;
++      _error = null;
++      _progress = 'Starte …';
++    });
++    try {
++      final files = await HeartReport.build(
++        dayId: _dayId,
++        pdf: _pdf,
++        csvHr: _csvHr,
++        csvRr: _csvRr,
++        progress: (p) {
++          if (mounted) setState(() => _progress = p);
++        },
++      );
++      final xfiles = <XFile>[
++        if (files.pdfPath != null) XFile(files.pdfPath!, mimeType: 'application/pdf'),
++        if (files.csvHrPath != null) XFile(files.csvHrPath!, mimeType: 'text/csv'),
++        if (files.csvRrPath != null) XFile(files.csvRrPath!, mimeType: 'text/csv'),
++      ];
++      if (mounted) {
++        setState(() {
++          _last = files.stats;
++          _progress = 'Fertig — Teilen-Dialog …';
++        });
++      }
++      await Share.shareXFiles(
++        xfiles,
++        text: 'CM Health Herzreport $_dayId',
++        sharePositionOrigin: origin,
++      );
++    } catch (e) {
++      if (mounted) setState(() => _error = '$e');
++    } finally {
++      if (mounted) {
++        setState(() {
++          _busy = false;
++          _progress = '';
++        });
++      }
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final s = _last;
++    final weekdays = const [
++      'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag',
++      'Sonntag',
++    ];
++    final dayLabel = '${weekdays[_day.weekday - 1]}, '
++        '${_day.day.toString().padLeft(2, '0')}.'
++        '${_day.month.toString().padLeft(2, '0')}.${_day.year}';
++    return AppScaffold(
++      title: 'Herzreport',
++      body: ListView(
++        padding: EdgeInsets.fromLTRB(
++            Sp.screen, Sp.x2, Sp.screen, dsBottomGutter(context)),
++        children: [
++          SurfaceCard(
++            padding: const EdgeInsets.all(Sp.x4),
++            onTap: _busy ? null : _pickDay,
++            child: Row(
++              children: [
++                AppIcon(OsIcon.today, size: 22),
++                const SizedBox(width: Sp.x3),
++                Expanded(
++                  child: Column(
++                    crossAxisAlignment: CrossAxisAlignment.start,
++                    children: [
++                      Text('Tag', style: AppText.captionMuted),
++                      const SizedBox(height: 2),
++                      Text(dayLabel, style: AppText.title),
++                    ],
++                  ),
++                ),
++                Text('Ändern', style: AppText.captionMuted),
++              ],
++            ),
++          ),
++          const SizedBox(height: Sp.x3),
++          Text('Dateien', style: AppText.title),
++          const SizedBox(height: Sp.x2),
++          SurfaceCard(
++            padding: const EdgeInsets.symmetric(
++                horizontal: Sp.x4, vertical: Sp.x2),
++            child: Column(
++              children: [
++                _toggle(
++                  'PDF-Bericht',
++                  '2 Seiten: 24-h-Pulsband, Stundentabelle, Tachogramm, '
++                      'RR-Verteilung, Kennzahlen',
++                  _pdf,
++                  (v) => setState(() => _pdf = v),
++                ),
++                Divider(height: Sp.x3, thickness: 1, color: AppColors.divider),
++                _toggle(
++                  'Puls je Sekunde (CSV)',
++                  'epoch_s, zeit_lokal, puls_bpm — bis zu 86.400 Zeilen',
++                  _csvHr,
++                  (v) => setState(() => _csvHr = v),
++                ),
++                Divider(height: Sp.x3, thickness: 1, color: AppColors.divider),
++                _toggle(
++                  'Herzschläge RR (CSV)',
++                  'epoch_ms, zeit_lokal, rr_ms, momentan_bpm — jeder erfasste Schlag',
++                  _csvRr,
++                  (v) => setState(() => _csvRr = v),
++                ),
++              ],
++            ),
++          ),
++          const SizedBox(height: Sp.x4),
++          SizedBox(
++            width: double.infinity,
++            child: FilledButton.icon(
++              onPressed: _busy || (!_pdf && !_csvHr && !_csvRr) ? null : _run,
++              icon: _busy
++                  ? const SizedBox(
++                      width: 16,
++                      height: 16,
++                      child: CircularProgressIndicator(strokeWidth: 2),
++                    )
++                  : AppIcon(OsIcon.heartRate, size: 18),
++              label: Text(_busy ? _progress : 'Erstellen und teilen'),
++              style: FilledButton.styleFrom(
++                padding: const EdgeInsets.symmetric(vertical: Sp.x3),
++              ),
++            ),
++          ),
++          if (_error != null) ...[
++            const SizedBox(height: Sp.x3),
++            SurfaceCard(
++              padding: const EdgeInsets.all(Sp.x4),
++              child: Text(
++                _error!.replaceFirst('Bad state: ', ''),
++                style: AppText.body.copyWith(color: AppColors.critical),
++              ),
++            ),
++          ],
++          if (s != null) ...[
++            const SizedBox(height: Sp.x4),
++            Text('Zuletzt erstellt', style: AppText.title),
++            const SizedBox(height: Sp.x2),
++            SurfaceCard(
++              padding: const EdgeInsets.all(Sp.x4),
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: [
++                  _kv('Ø Puls',
++                      '${s.meanBpm.round()} bpm (Median ${s.medianBpm})'),
++                  _kv('Spanne', '${s.minBpm}–${s.maxBpm} bpm'),
++                  _kv('Abdeckung',
++                      '${(s.coverage * 100).toStringAsFixed(1)} % · ${s.samples} Messwerte'),
++                  _kv('Herzschläge', '${s.beats} (ab 2 s: ${s.longBeats})'),
++                  _kv(
++                      'Nacht-RMSSD',
++                      s.nightRmssd == null
++                          ? 'zu wenig Daten'
++                          : '${s.nightRmssd!.toStringAsFixed(1)} ms (00–05 Uhr)'),
++                ],
++              ),
++            ),
++          ],
++          const SizedBox(height: Sp.x4),
++          Text(
++            'Der Report wird komplett auf dem Handy aus den gespeicherten '
++            'Band-Daten gerechnet. Die Messung ist optisch (PPG) und kein EKG — '
++            'die Werte dienen der persönlichen Verlaufsbeobachtung, nicht der '
++            'Diagnose.',
++            style: AppText.captionMuted,
++          ),
++        ],
++      ),
++    );
++  }
++
++  Widget _toggle(
++      String title, String sub, bool value, ValueChanged<bool> onChanged) {
++    return Row(
++      children: [
++        Expanded(
++          child: Column(
++            crossAxisAlignment: CrossAxisAlignment.start,
++            children: [
++              Text(title, style: AppText.body),
++              const SizedBox(height: 2),
++              Text(sub, style: AppText.captionMuted),
++            ],
++          ),
++        ),
++        Switch(value: value, onChanged: _busy ? null : onChanged),
++      ],
++    );
++  }
++
++  Widget _kv(String k, String v) {
++    return Padding(
++      padding: const EdgeInsets.symmetric(vertical: 3),
++      child: Row(
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: [
++          SizedBox(width: 110, child: Text(k, style: AppText.captionMuted)),
++          Expanded(child: Text(v, style: AppText.body)),
++        ],
++      ),
++    );
++  }
++}
