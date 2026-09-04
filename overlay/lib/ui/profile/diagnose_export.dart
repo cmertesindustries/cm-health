@@ -91,6 +91,37 @@ Future<void> shareDiagnoseReport(
   buf.writeln('Live-Schritte (Band): ${app.liveSteps}');
   buf.writeln('');
 
+  // ── CM Health v2.3.0: Sync-Takt / HF-Modus / Log-Deckel ──
+  buf.writeln('── Sync (v2.3.0) ──');
+  try {
+    buf.writeln('Abruftakt: ${app.syncIntervalMin} min');
+    final cap = app.pipelineStatus['capture'] as Map<String, dynamic>?;
+    if (cap != null) {
+      for (final k in [
+        'active', 'high_freq_requested', 'high_freq_reason',
+        'history_requests', 'history_completions', 'records_seen',
+        'gate_dropped_total', 'counter_regressions_total',
+        'corrupt_data_ranges_total', 'strap_history_newest_ts',
+      ]) {
+        if (cap.containsKey(k)) buf.writeln('$k: ${cap[k]}');
+      }
+    }
+    final der = app.pipelineStatus['derive'] as Map<String, dynamic>?;
+    if (der != null) {
+      buf.writeln('derive: running=${der['running']} '
+          'offload_active=${der['offload_active']} '
+          'pending_light=${der['pending_light']} '
+          'pending_heavy=${der['pending_heavy']}');
+    }
+    buf.writeln('Letzter Datensatz (Band-Zeit): ${app.lastRecordAt ?? '-'}');
+    buf.writeln('Ausführliches Protokoll: ${app.verboseLog}');
+    buf.writeln('Logdatei: ${(await FileLog.sizeBytes()) ~/ 1024} KB, '
+        'gedrosselte Zeilen seit Start: ${FileLog.droppedLines}');
+  } catch (e) {
+    buf.writeln('Sync-Status-Fehler: $e');
+  }
+  buf.writeln('');
+
   // ── Sync / Datenbank ──
   buf.writeln('── Daten ──');
   buf.writeln('Health-Connect-Sync aktiv: ${app.healthSyncEnabled}');
