@@ -122,6 +122,15 @@ Future<void> shareDiagnoseReport(
   }
   buf.writeln('');
 
+  // ── CM Health v2.3.1: Sicherung nach Drive ──
+  buf.writeln('── Sicherung nach Drive (v2.3.1) ──');
+  try {
+    buf.write(app.driveBackup.diagnoseText());
+  } catch (e) {
+    buf.writeln('Sicherungs-Status-Fehler: $e');
+  }
+  buf.writeln('');
+
   // ── Sync / Datenbank ──
   buf.writeln('── Daten ──');
   buf.writeln('Health-Connect-Sync aktiv: ${app.healthSyncEnabled}');
