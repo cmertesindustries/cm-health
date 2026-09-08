@@ -274,10 +274,10 @@ index 0000000..237f154
 +}
 diff --git a/lib/report/heart_report.dart b/lib/report/heart_report.dart
 new file mode 100644
-index 0000000..a19e649
+index 0000000..10746c2
 --- /dev/null
 +++ b/lib/report/heart_report.dart
-@@ -0,0 +1,670 @@
+@@ -0,0 +1,1049 @@
 +// CM Health v2.3.0 — Herzreport (Tagesbericht im Langzeit-EKG-Stil).
 +//
 +// Baut aus den 1-Hz-Pulswerten und den Schlag-zu-Schlag-Intervallen (RR) eines
@@ -349,52 +349,68 @@ index 0000000..a19e649
 +  int sum = 0;
 +}
 +
-+class HeartReport {
-+  static const _blue = CmPdfColor(0.165, 0.47, 0.84); // #2a78d6
-+  static const _band = CmPdfColor(0.804, 0.886, 0.984); // #cde2fb
-+  static const _red = CmPdfColor(0.816, 0.231, 0.231); // #d03b3b
-+  static const _grid = CmPdfColor(0.9, 0.9, 0.9);
-+  static const _axis = CmPdfColor(0.6, 0.6, 0.6);
-+  static const _ink = CmPdfColor(0.1, 0.1, 0.1);
-+  static const _muted = CmPdfColor(0.42, 0.42, 0.42);
-+  static const _tile = CmPdfColor(0.965, 0.965, 0.96);
-+  static const _white = CmPdfColor(1, 1, 1);
++/// CM Health v2.3.1 — Ergebnis eines Zeitraum-Reports.
++class HeartRangeFiles {
++  final String? pdfPath;
++  final List<String> csvPaths;
++  final List<HeartReportStats> days;
++  final List<String> missingDays;
++  const HeartRangeFiles({
++    required this.pdfPath,
++    required this.csvPaths,
++    required this.days,
++    required this.missingDays,
++  });
++}
 +
-+  static const _weekdays = [
-+    'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag',
-+    'Sonntag',
-+  ];
++/// Geladene und vorverdichtete Daten eines Kalendertags (Basis für PDF-Seiten,
++/// CSVs und die Zeitraum-Übersicht).
++class HeartDayData {
++  final String dayId;
++  final int startSec;
++  final int endSec;
++  final List<int> hrTs;
++  final List<int> hrBpm;
++  final List<int> rrTs;
++  final List<int> rrMs;
++  final List<_MinuteAgg> perMin;
++  final HeartReportStats stats;
 +
-+  /// Erzeugt die gewünschten Dateien im Temp-Verzeichnis und liefert Pfade.
-+  static Future<HeartReportFiles> build({
-+    required String dayId,
-+    bool pdf = true,
-+    bool csvHr = true,
-+    bool csvRr = true,
-+    void Function(String)? progress,
-+  }) async {
++  HeartDayData._({
++    required this.dayId,
++    required this.startSec,
++    required this.endSec,
++    required this.hrTs,
++    required this.hrBpm,
++    required this.rrTs,
++    required this.rrMs,
++    required this.perMin,
++    required this.stats,
++  });
++
++  int get daySec => endSec - startSec;
++  int get minutes => daySec ~/ 60;
++
++  /// Lädt einen Tag aus der Datenbank; null, wenn keine Pulswerte vorliegen.
++  static Future<HeartDayData?> load(String dayId) async {
 +    final startSec = localDayStartSec(dayId);
 +    final endSec = localDayEndSec(dayId);
 +    if (startSec == null || endSec == null) {
 +      throw ArgumentError('Ungültiges Datum: $dayId');
 +    }
-+    progress?.call('Lade Pulswerte …');
 +    final db = await LocalDb.instance;
 +    final hrRows = await db.rawQuery(
 +      'SELECT rec_ts, hr FROM decoded_onehz '
 +      'WHERE rec_ts >= ? AND rec_ts < ? AND hr > 0 ORDER BY rec_ts',
 +      [startSec, endSec],
 +    );
-+    if (hrRows.isEmpty) {
-+      throw StateError('Keine Pulsdaten für diesen Tag vorhanden.');
-+    }
++    if (hrRows.isEmpty) return null;
 +    final hrTs = List<int>.filled(hrRows.length, 0);
 +    final hrBpm = List<int>.filled(hrRows.length, 0);
 +    for (var i = 0; i < hrRows.length; i++) {
 +      hrTs[i] = (hrRows[i]['rec_ts'] as num).toInt();
 +      hrBpm[i] = (hrRows[i]['hr'] as num).toInt();
 +    }
-+    progress?.call('Lade Herzschläge …');
 +    final rrRows = await db.rawQuery(
 +      'SELECT rr_ts_ms, rr_ms FROM decoded_rr '
 +      'WHERE rr_ts_ms >= ? AND rr_ts_ms < ? AND rr_ms BETWEEN 250 AND 3500 '
@@ -408,7 +424,6 @@ index 0000000..a19e649
 +      rrMs[i] = (rrRows[i]['rr_ms'] as num).toInt();
 +    }
 +
-+    progress?.call('Berechne Kennzahlen …');
 +    final daySec = endSec - startSec; // 86400 (DST-Tage: 82800/90000)
 +    final minutes = daySec ~/ 60;
 +    final perMin = List.generate(minutes, (_) => _MinuteAgg());
@@ -437,7 +452,7 @@ index 0000000..a19e649
 +    final mean = sum / hrTs.length;
 +    final coverage = hrTs.length / daySec;
 +
-+    // Nacht-RMSSD 00–05 Uhr (RR 300–1800 ms, |ΔRR| < 250 ms).
++    // Nacht-RMSSD 00–05 Uhr (RR 300–1800 ms, RR-Differenz < 250 ms).
 +    final nightEnd = (startSec + 5 * 3600) * 1000;
 +    var sq = 0.0;
 +    var pairs = 0;
@@ -449,72 +464,207 @@ index 0000000..a19e649
 +      if (a < 300 || a > 1800 || b < 300 || b > 1800) continue;
 +      final d = (b - a).abs();
 +      if (d >= 250) continue;
-+      // Nur direkt aufeinanderfolgende Schläge (Lücke < 3 s).
-+      if (rrTs[i] - rrTs[i - 1] > 3000) continue;
++      if (rrTs[i] - rrTs[i - 1] > 3000) continue; // nur direkte Nachbarn
 +      sq += d * d;
 +      pairs++;
 +    }
 +    final rmssd = pairs >= 100 ? math.sqrt(sq / pairs) : null;
 +
-+    final stats = HeartReportStats(
++    return HeartDayData._(
 +      dayId: dayId,
-+      samples: hrTs.length,
-+      coverage: coverage,
-+      meanBpm: mean,
-+      minBpm: minBpm,
-+      minAtSec: minAt,
-+      maxBpm: maxBpm,
-+      maxAtSec: maxAt,
-+      medianBpm: median,
-+      beats: rrMs.length,
-+      longBeats: longBeats,
-+      nightRmssd: rmssd,
-+      nightRmssdPairs: pairs,
++      startSec: startSec,
++      endSec: endSec,
++      hrTs: hrTs,
++      hrBpm: hrBpm,
++      rrTs: rrTs,
++      rrMs: rrMs,
++      perMin: perMin,
++      stats: HeartReportStats(
++        dayId: dayId,
++        samples: hrTs.length,
++        coverage: coverage,
++        meanBpm: mean,
++        minBpm: minBpm,
++        minAtSec: minAt,
++        maxBpm: maxBpm,
++        maxAtSec: maxAt,
++        medianBpm: median,
++        beats: rrMs.length,
++        longBeats: longBeats,
++        nightRmssd: rmssd,
++        nightRmssdPairs: pairs,
++      ),
 +    );
++  }
++}
 +
-+    final dir = await getTemporaryDirectory();
++class HeartReport {
++  static const _blue = CmPdfColor(0.165, 0.47, 0.84); // #2a78d6
++  static const _band = CmPdfColor(0.804, 0.886, 0.984); // #cde2fb
++  static const _red = CmPdfColor(0.816, 0.231, 0.231); // #d03b3b
++  static const _grid = CmPdfColor(0.9, 0.9, 0.9);
++  static const _axis = CmPdfColor(0.6, 0.6, 0.6);
++  static const _ink = CmPdfColor(0.1, 0.1, 0.1);
++  static const _muted = CmPdfColor(0.42, 0.42, 0.42);
++  static const _tile = CmPdfColor(0.965, 0.965, 0.96);
++  static const _white = CmPdfColor(1, 1, 1);
++
++  static const _weekdays = [
++    'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag',
++    'Sonntag',
++  ];
++
++  /// Erzeugt die gewünschten Dateien im Temp-Verzeichnis und liefert Pfade
++  /// (Einzeltag). [outDir] optional (Standard: Temp-Verzeichnis).
++  static Future<HeartReportFiles> build({
++    required String dayId,
++    bool pdf = true,
++    bool csvHr = true,
++    bool csvRr = true,
++    Directory? outDir,
++    void Function(String)? progress,
++  }) async {
++    progress?.call('Lade Daten …');
++    final d = await HeartDayData.load(dayId);
++    if (d == null) {
++      throw StateError('Keine Pulsdaten für diesen Tag vorhanden.');
++    }
++    final dir = outDir ?? await getTemporaryDirectory();
 +    String? pdfPath, hrPath, rrPath;
 +    if (pdf) {
 +      progress?.call('Zeichne PDF …');
 +      final doc = CmPdfDocument(title: 'CM Health Herzreport $dayId');
-+      _pageOverview(doc, stats, perMin, startSec, minutes);
-+      _pageBeats(doc, stats, rrTs, rrMs, startSec, daySec);
++      _pageOverview(doc, d, 1, 2);
++      _pageBeats(doc, d, 2, 2);
 +      final f = File('${dir.path}/cm-herzreport-$dayId.pdf');
 +      await f.writeAsBytes(doc.build(), flush: true);
 +      pdfPath = f.path;
 +    }
 +    if (csvHr) {
 +      progress?.call('Schreibe 1-Hz-CSV …');
-+      final f = File('${dir.path}/cm-herzfrequenz-1hz-$dayId.csv');
-+      final sink = f.openWrite();
-+      sink.writeln('epoch_s,zeit_lokal,puls_bpm');
-+      for (var i = 0; i < hrTs.length; i++) {
-+        sink.writeln('${hrTs[i]},${_fmtLocal(hrTs[i] * 1000)},${hrBpm[i]}');
-+      }
-+      await sink.flush();
-+      await sink.close();
-+      hrPath = f.path;
++      hrPath = await writeCsvHr(d, dir);
 +    }
 +    if (csvRr) {
 +      progress?.call('Schreibe RR-CSV …');
-+      final f = File('${dir.path}/cm-herzschlaege-rr-$dayId.csv');
-+      final sink = f.openWrite();
-+      sink.writeln('epoch_ms,zeit_lokal,rr_ms,momentan_bpm');
-+      for (var i = 0; i < rrTs.length; i++) {
-+        final bpm = (60000 / rrMs[i]).toStringAsFixed(1);
-+        sink.writeln(
-+            '${rrTs[i]},${_fmtLocal(rrTs[i], ms: true)},${rrMs[i]},$bpm');
-+      }
-+      await sink.flush();
-+      await sink.close();
-+      rrPath = f.path;
++      rrPath = await writeCsvRr(d, dir);
 +    }
 +    return HeartReportFiles(
 +      pdfPath: pdfPath,
 +      csvHrPath: hrPath,
 +      csvRrPath: rrPath,
-+      stats: stats,
++      stats: d.stats,
 +    );
++  }
++
++  /// CM Health v2.3.1 — Zeitraum-Report: EIN PDF (Übersichtsseite + je Tag die
++  /// bekannten zwei Seiten) plus CSVs je Tag. Tage ohne Daten erscheinen nur
++  /// in der Übersicht. [from]/[to] als YYYY-MM-DD, inklusive; max. 31 Tage.
++  static Future<HeartRangeFiles> buildRange({
++    required String from,
++    required String to,
++    bool pdf = true,
++    bool csvHr = true,
++    bool csvRr = true,
++    Directory? outDir,
++    void Function(String)? progress,
++  }) async {
++    final days = dayIdsBetween(from, to);
++    if (days.isEmpty) throw ArgumentError('Ungültiger Zeitraum: $from – $to');
++    if (days.length > 31) {
++      throw StateError('Höchstens 31 Tage je Zeitraum-Report.');
++    }
++    final dir = outDir ?? await getTemporaryDirectory();
++    final loaded = <HeartDayData>[];
++    final missing = <String>[];
++    final csvPaths = <String>[];
++    for (var i = 0; i < days.length; i++) {
++      progress?.call('Tag ${i + 1}/${days.length} …');
++      final d = await HeartDayData.load(days[i]);
++      if (d == null) {
++        missing.add(days[i]);
++        continue;
++      }
++      loaded.add(d);
++      if (csvHr) csvPaths.add(await writeCsvHr(d, dir));
++      if (csvRr) csvPaths.add(await writeCsvRr(d, dir));
++    }
++    if (loaded.isEmpty) {
++      throw StateError('Keine Pulsdaten im gewählten Zeitraum.');
++    }
++    String? pdfPath;
++    if (pdf) {
++      progress?.call('Zeichne PDF …');
++      final doc =
++          CmPdfDocument(title: 'CM Health Herzreport $from bis $to');
++      final total = 1 + 2 * loaded.length;
++      _pageRangeOverview(doc, from, to, days, loaded, total);
++      var page = 2;
++      for (final d in loaded) {
++        _pageOverview(doc, d, page, total);
++        _pageBeats(doc, d, page + 1, total);
++        page += 2;
++      }
++      final f = File('${dir.path}/cm-herzreport-${from}_bis_$to.pdf');
++      await f.writeAsBytes(doc.build(), flush: true);
++      pdfPath = f.path;
++    }
++    return HeartRangeFiles(
++      pdfPath: pdfPath,
++      csvPaths: csvPaths,
++      days: [for (final d in loaded) d.stats],
++      missingDays: missing,
++    );
++  }
++
++  /// Alle Kalendertage von [from] bis [to] (inklusive) als YYYY-MM-DD.
++  static List<String> dayIdsBetween(String from, String to) {
++    final a = _parseDay(from), b = _parseDay(to);
++    if (a == null || b == null || b.isBefore(a)) return const [];
++    final out = <String>[];
++    var d = a;
++    while (!d.isAfter(b)) {
++      out.add(dayIdOf(d));
++      d = DateTime(d.year, d.month, d.day + 1);
++      if (out.length > 400) break;
++    }
++    return out;
++  }
++
++  static String dayIdOf(DateTime d) =>
++      '${d.year}-${_two(d.month)}-${_two(d.day)}';
++
++  static DateTime? _parseDay(String id) {
++    final p = id.split('-');
++    if (p.length != 3) return null;
++    final y = int.tryParse(p[0]), m = int.tryParse(p[1]), d = int.tryParse(p[2]);
++    if (y == null || m == null || d == null) return null;
++    return DateTime(y, m, d);
++  }
++
++  static Future<String> writeCsvHr(HeartDayData d, Directory dir) async {
++    final f = File('${dir.path}/cm-herzfrequenz-1hz-${d.dayId}.csv');
++    final sink = f.openWrite();
++    sink.writeln('epoch_s,zeit_lokal,puls_bpm');
++    for (var i = 0; i < d.hrTs.length; i++) {
++      sink.writeln('${d.hrTs[i]},${_fmtLocal(d.hrTs[i] * 1000)},${d.hrBpm[i]}');
++    }
++    await sink.flush();
++    await sink.close();
++    return f.path;
++  }
++
++  static Future<String> writeCsvRr(HeartDayData d, Directory dir) async {
++    final f = File('${dir.path}/cm-herzschlaege-rr-${d.dayId}.csv');
++    final sink = f.openWrite();
++    sink.writeln('epoch_ms,zeit_lokal,rr_ms,momentan_bpm');
++    for (var i = 0; i < d.rrTs.length; i++) {
++      final bpm = (60000 / d.rrMs[i]).toStringAsFixed(1);
++      sink.writeln(
++          '${d.rrTs[i]},${_fmtLocal(d.rrTs[i], ms: true)},${d.rrMs[i]},$bpm');
++    }
++    await sink.flush();
++    await sink.close();
++    return f.path;
 +  }
 +
 +  // ── Formatierung ──────────────────────────────────────────────────────────
@@ -544,10 +694,13 @@ index 0000000..a19e649
 +  }
 +
 +  // ── Seite 1: Übersicht ────────────────────────────────────────────────────
-+  static void _pageOverview(CmPdfDocument doc, HeartReportStats s,
-+      List<_MinuteAgg> perMin, int startSec, int minutes) {
++  static void _pageOverview(
++      CmPdfDocument doc, HeartDayData d, int pageNo, int pages) {
++    final s = d.stats;
++    final perMin = d.perMin;
++    final minutes = d.minutes;
 +    final p = doc.addPage();
-+    _header(p, s.dayId, 1, 2);
++    _header(p, s.dayId, pageNo, pages);
 +
 +    // KPI-Kacheln
 +    final kpis = <(String, String, String)>[
@@ -702,10 +855,15 @@ index 0000000..a19e649
 +  }
 +
 +  // ── Seite 2: Schlag-zu-Schlag ─────────────────────────────────────────────
-+  static void _pageBeats(CmPdfDocument doc, HeartReportStats s, List<int> rrTs,
-+      List<int> rrMs, int startSec, int daySec) {
++  static void _pageBeats(
++      CmPdfDocument doc, HeartDayData d, int pageNo, int pages) {
++    final s = d.stats;
++    final rrTs = d.rrTs;
++    final rrMs = d.rrMs;
++    final startSec = d.startSec;
++    final daySec = d.daySec;
 +    final p = doc.addPage();
-+    _header(p, s.dayId, 2, 2);
++    _header(p, s.dayId, pageNo, pages);
 +    const left = 40.0, right = 555.0;
 +
 +    p.setFill(_ink);
@@ -866,6 +1024,227 @@ index 0000000..a19e649
 +    _footer(p);
 +  }
 +
++  // ── Zeitraum-Übersicht (v2.3.1) ───────────────────────────────────────────
++  static void _pageRangeOverview(CmPdfDocument doc, String from, String to,
++      List<String> allDays, List<HeartDayData> loaded, int pages) {
++    final p = doc.addPage();
++    p.setFill(_ink);
++    p.text('CM Health – Herzreport', 40, 52, size: 18, bold: true);
++    p.setFill(_muted);
++    p.text(
++        'Zeitraum ${_dayShort(from)} – ${_dayShort(to)} · ${allDays.length} Tage, '
++        '${loaded.length} mit Daten',
++        40, 68, size: 10);
++    p.text('erstellt ${_nowText()} · Seite 1/$pages', 555, 68,
++        size: 8, align: 2);
++    p.setStroke(_blue);
++    p.setLineWidth(1.2);
++    p.line(40, 76, 555, 76);
++
++    const left = 40.0, right = 555.0;
++    // Zeitraum-Kennzahlen (gewichtet nach Messwerten)
++    var samples = 0;
++    var weighted = 0.0;
++    var minBpm = 999, maxBpm = 0;
++    var rmssdSum = 0.0, rmssdN = 0;
++    var beats = 0;
++    var seconds = 0;
++    for (final d in loaded) {
++      final s = d.stats;
++      samples += s.samples;
++      weighted += s.meanBpm * s.samples;
++      minBpm = math.min(minBpm, s.minBpm);
++      maxBpm = math.max(maxBpm, s.maxBpm);
++      if (s.nightRmssd != null) {
++        rmssdSum += s.nightRmssd!;
++        rmssdN++;
++      }
++      beats += s.beats;
++      seconds += d.daySec;
++    }
++    final kpis = <(String, String, String)>[
++      ('Ø PULS', samples == 0 ? '–' : '${(weighted / samples).round()}',
++          'bpm über den Zeitraum'),
++      ('MINIMUM', '$minBpm', 'bpm (niedrigster Tageswert)'),
++      ('MAXIMUM', '$maxBpm', 'bpm (höchster Tageswert)'),
++      ('ABDECKUNG', seconds == 0 ? '–' : '${(samples * 100 / seconds).round()} %',
++          '${(samples / 3600).toStringAsFixed(0)} h Messwerte'),
++      ('Ø NACHT-RMSSD', rmssdN == 0 ? '–' : '${(rmssdSum / rmssdN).round()}',
++          rmssdN == 0 ? 'zu wenig Daten' : 'ms · $rmssdN Nächte'),
++    ];
++    final tileW = (right - left - 4 * 8) / 5;
++    for (var i = 0; i < kpis.length; i++) {
++      final x = left + i * (tileW + 8);
++      p.setFill(_tile);
++      p.fillRect(x, 88, tileW, 62);
++      p.setFill(_muted);
++      p.text(kpis[i].$1, x + 8, 103, size: 7);
++      p.setFill(_ink);
++      p.text(kpis[i].$2, x + 8, 127, size: 20, bold: true);
++      p.setFill(_muted);
++      p.text(kpis[i].$3, x + 8, 141, size: 7);
++    }
++
++    // Trend: Ø-Puls (Linie) und Tages-Minimum (Linie) je Tag; darunter
++    // Nacht-RMSSD als Balken.
++    final byDay = {for (final d in loaded) d.dayId: d.stats};
++    final n = allDays.length;
++    p.setFill(_ink);
++    p.text('Verlauf über den Zeitraum', left, 176, size: 11, bold: true);
++    p.setFill(_muted);
++    p.text('blau = Ø Puls, hell = Tages-Minimum · Balken = Nacht-RMSSD (00–05 Uhr)',
++        right, 176, size: 7, align: 2);
++    const cx0 = 68.0, cx1 = 555.0, cy0 = 188.0, cy1 = 318.0;
++    var lo = 999, hi = 0;
++    for (final s in byDay.values) {
++      lo = math.min(lo, s.minBpm);
++      hi = math.max(hi, s.meanBpm.round());
++    }
++    if (hi == 0) {
++      lo = 40;
++      hi = 100;
++    }
++    lo = ((lo - 5) ~/ 10) * 10;
++    hi = ((hi + 14) ~/ 10) * 10;
++    if (hi - lo < 30) hi = lo + 30;
++    double xOf(int i) => cx0 + (cx1 - cx0) * (i + 0.5) / n;
++    double yOf(num bpm) => cy1 - (cy1 - cy0) * (bpm - lo) / (hi - lo);
++    p.setFill(_white);
++    p.fillRect(cx0, cy0, cx1 - cx0, cy1 - cy0);
++    p.setStroke(_grid);
++    p.setLineWidth(0.5);
++    for (var v = lo; v <= hi; v += 10) {
++      final yy = yOf(v);
++      p.line(cx0, yy, cx1, yy);
++      p.setFill(_muted);
++      p.text('$v', cx0 - 4, yy + 2.5, size: 7, align: 2);
++    }
++    p.setStroke(_axis);
++    p.setLineWidth(0.6);
++    p.line(cx0, cy1, cx1, cy1);
++    p.line(cx0, cy0, cx0, cy1);
++    p.setFill(_muted);
++    p.text('bpm', cx0 - 4, cy0 - 9, size: 7, align: 2);
++    final labelEvery = n <= 10 ? 1 : (n <= 20 ? 2 : 3);
++    for (var i = 0; i < n; i++) {
++      if (i % labelEvery == 0 || i == n - 1) {
++        p.text(_dayShort(allDays[i], year: false), xOf(i), cy1 + 10,
++            size: 7, align: 1);
++      }
++    }
++    // Segmente zusammenhängender Tage mit Daten
++    void drawSeries(int Function(HeartReportStats) pick, CmPdfColor c,
++        double width) {
++      var i = 0;
++      while (i < n) {
++        if (!byDay.containsKey(allDays[i])) {
++          i++;
++          continue;
++        }
++        final xs = <double>[], ys = <double>[];
++        var j = i;
++        while (j < n && byDay.containsKey(allDays[j])) {
++          xs.add(xOf(j));
++          ys.add(yOf(pick(byDay[allDays[j]]!)));
++          j++;
++        }
++        p.setStroke(c);
++        p.setLineWidth(width);
++        if (xs.length >= 2) {
++          p.polyline(xs, ys);
++        }
++        p.setFill(c);
++        for (var k = 0; k < xs.length; k++) {
++          p.fillRect(xs[k] - 1.5, ys[k] - 1.5, 3, 3);
++        }
++        i = j;
++      }
++    }
++    drawSeries((s) => s.minBpm, _band, 1.2);
++    drawSeries((s) => s.meanBpm.round(), _blue, 1.4);
++
++    // RMSSD-Balken
++    const ry0 = 334.0, ry1 = 404.0;
++    var rMax = 0.0;
++    for (final s in byDay.values) {
++      if (s.nightRmssd != null) rMax = math.max(rMax, s.nightRmssd!);
++    }
++    p.setFill(_white);
++    p.fillRect(cx0, ry0, cx1 - cx0, ry1 - ry0);
++    p.setStroke(_axis);
++    p.setLineWidth(0.6);
++    p.line(cx0, ry1, cx1, ry1);
++    p.line(cx0, ry0, cx0, ry1);
++    p.setFill(_muted);
++    p.text('ms', cx0 - 4, ry0 - 3, size: 7, align: 2);
++    if (rMax > 0) {
++      p.text('${rMax.round()}', cx0 - 4, ry0 + 8, size: 7, align: 2);
++      final bw = (cx1 - cx0) / n;
++      for (var i = 0; i < n; i++) {
++        final s = byDay[allDays[i]];
++        if (s == null || s.nightRmssd == null) continue;
++        final h = (ry1 - ry0 - 6) * s.nightRmssd! / rMax;
++        p.setFill(_blue);
++        p.fillRect(cx0 + i * bw + bw * 0.2, ry1 - h, bw * 0.6, h);
++      }
++    }
++
++    // Tabelle je Tag
++    p.setFill(_ink);
++    p.text('Tage im Überblick', left, 428, size: 11, bold: true);
++    final cols = <(String, double, int)>[
++      ('Datum', left, 0),
++      ('Abdeckung', 170, 2),
++      ('Ø bpm', 225, 2),
++      ('Min', 270, 2),
++      ('Max', 315, 2),
++      ('Nacht-RMSSD', 395, 2),
++      ('Schläge', 460, 2),
++      ('ab 2 s', 515, 2),
++    ];
++    var ty = 442.0;
++    p.setFill(_muted);
++    for (final c in cols) {
++      p.text(c.$1, c.$2, ty, size: 7, align: c.$3);
++    }
++    ty += 4;
++    p.setStroke(_grid);
++    p.setLineWidth(0.5);
++    p.line(left, ty, right, ty);
++    final rowH = math.min(13.0, (782 - ty - 2) / n);
++    final fs = rowH >= 11 ? 8.0 : 7.0;
++    for (var i = 0; i < n; i++) {
++      final base = ty + rowH * (i + 1) - 3;
++      if (i.isOdd) {
++        p.setFill(_tile);
++        p.fillRect(left, ty + rowH * i + 1, right - left, rowH - 1);
++      }
++      final s = byDay[allDays[i]];
++      p.setFill(_ink);
++      p.text(_dayTitle(allDays[i]), left + 2, base, size: fs);
++      if (s == null) {
++        p.setFill(_muted);
++        p.text('keine Daten', 175, base, size: fs);
++        continue;
++      }
++      p.text('${(s.coverage * 100).round()} %', 170, base, size: fs, align: 2);
++      p.text('${s.meanBpm.round()}', 225, base, size: fs, align: 2);
++      p.text('${s.minBpm}', 270, base, size: fs, align: 2);
++      p.text('${s.maxBpm}', 315, base, size: fs, align: 2);
++      p.text(s.nightRmssd == null ? '–' : '${s.nightRmssd!.round()} ms', 395,
++          base, size: fs, align: 2);
++      p.text('${s.beats}', 460, base, size: fs, align: 2);
++      p.text('${s.longBeats}', 515, base, size: fs, align: 2);
++    }
++    _footer(p);
++  }
++
++  static String _dayShort(String dayId, {bool year = true}) {
++    final p = dayId.split('-');
++    if (p.length != 3) return dayId;
++    return year ? '${p[2]}.${p[1]}.${p[0]}' : '${p[2]}.${p[1]}.';
++  }
++
 +  // ── Bausteine ─────────────────────────────────────────────────────────────
 +  static void _header(CmPdfPage p, String dayId, int page, int pages) {
 +    p.setFill(_ink);
@@ -950,11 +1329,13 @@ index 0000000..a19e649
 +}
 diff --git a/lib/ui/report/heart_report_screen.dart b/lib/ui/report/heart_report_screen.dart
 new file mode 100644
-index 0000000..238735d
+index 0000000..5bc90f3
 --- /dev/null
 +++ b/lib/ui/report/heart_report_screen.dart
-@@ -0,0 +1,277 @@
+@@ -0,0 +1,425 @@
 +// CM Health v2.3.0 — Herzreport exportieren.
++// v2.3.1: Umschalter Tag / Zeitraum (bis 31 Tage, ein PDF mit Übersicht +
++// Tagesseiten, CSVs je Tag).
 +//
 +// Tag wählen, Dateien ankreuzen (PDF-Bericht, 1-Hz-CSV, RR-CSV), erstellen,
 +// teilen. Der Bericht wird komplett lokal aus der Datenbank gerechnet
@@ -978,6 +1359,10 @@ index 0000000..238735d
 +
 +class _HeartReportScreenState extends State<HeartReportScreen> {
 +  late DateTime _day;
++  bool _range = false; // v2.3.1: Zeitraum statt Einzeltag
++  late DateTime _from;
++  late DateTime _to;
++  HeartRangeFiles? _lastRange;
 +  bool _pdf = true;
 +  bool _csvHr = true;
 +  bool _csvRr = true;
@@ -994,6 +1379,39 @@ index 0000000..238735d
 +    _day = now.hour < 12
 +        ? DateTime(now.year, now.month, now.day - 1)
 +        : DateTime(now.year, now.month, now.day);
++    _to = _day;
++    _from = DateTime(_day.year, _day.month, _day.day - 6);
++  }
++
++  static const int _maxRangeDays = 31;
++
++  int get _rangeDays => _to.difference(_from).inDays + 1;
++
++  Future<void> _pickRange() async {
++    final now = DateTime.now();
++    final picked = await showDateRangePicker(
++      context: context,
++      initialDateRange: DateTimeRange(start: _from, end: _to),
++      firstDate: DateTime(2026, 8, 1),
++      lastDate: DateTime(now.year, now.month, now.day),
++      helpText: 'Zeitraum für den Herzreport (max. $_maxRangeDays Tage)',
++      saveText: 'Übernehmen',
++    );
++    if (picked == null) return;
++    var a = DateTime(picked.start.year, picked.start.month, picked.start.day);
++    final b = DateTime(picked.end.year, picked.end.month, picked.end.day);
++    var note = '';
++    if (b.difference(a).inDays + 1 > _maxRangeDays) {
++      a = DateTime(b.year, b.month, b.day - (_maxRangeDays - 1));
++      note = 'Auf die letzten $_maxRangeDays Tage des gewählten Zeitraums gekürzt.';
++    }
++    setState(() {
++      _from = a;
++      _to = b;
++      _last = null;
++      _lastRange = null;
++      _error = note.isEmpty ? null : note;
++    });
 +  }
 +
 +  String get _dayId => dayIdOf(_day);
@@ -1028,6 +1446,10 @@ index 0000000..238735d
 +      _progress = 'Starte …';
 +    });
 +    try {
++      if (_range) {
++        await _runRange(origin);
++        return;
++      }
 +      final files = await HeartReport.build(
 +        dayId: _dayId,
 +        pdf: _pdf,
@@ -1065,9 +1487,45 @@ index 0000000..238735d
 +    }
 +  }
 +
++  Future<void> _runRange(Rect origin) async {
++    final fromId = dayIdOf(_from);
++    final toId = dayIdOf(_to);
++    final files = await HeartReport.buildRange(
++      from: fromId,
++      to: toId,
++      pdf: _pdf,
++      csvHr: _csvHr,
++      csvRr: _csvRr,
++      progress: (p) {
++        if (mounted) setState(() => _progress = p);
++      },
++    );
++    final xfiles = <XFile>[
++      if (files.pdfPath != null)
++        XFile(files.pdfPath!, mimeType: 'application/pdf'),
++      for (final c in files.csvPaths) XFile(c, mimeType: 'text/csv'),
++    ];
++    if (mounted) {
++      setState(() {
++        _lastRange = files;
++        _progress = 'Fertig — Teilen-Dialog …';
++      });
++    }
++    await Share.shareXFiles(
++      xfiles,
++      text: 'CM Health Herzreport $fromId bis $toId',
++      sharePositionOrigin: origin,
++    );
++  }
++
++  static String _fmtDate(DateTime d) =>
++      '${d.day.toString().padLeft(2, '0')}.'
++      '${d.month.toString().padLeft(2, '0')}.${d.year}';
++
 +  @override
 +  Widget build(BuildContext context) {
 +    final s = _last;
++    final r = _lastRange;
 +    final weekdays = const [
 +      'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag',
 +      'Sonntag',
@@ -1081,9 +1539,22 @@ index 0000000..238735d
 +        padding: EdgeInsets.fromLTRB(
 +            Sp.screen, Sp.x2, Sp.screen, dsBottomGutter(context)),
 +        children: [
++          SegmentedControl(
++            options: const ['Tag', 'Zeitraum'],
++            index: _range ? 1 : 0,
++            expanded: true,
++            onChanged: (i) {
++              if (_busy) return;
++              setState(() {
++                _range = i == 1;
++                _error = null;
++              });
++            },
++          ),
++          const SizedBox(height: Sp.x3),
 +          SurfaceCard(
 +            padding: const EdgeInsets.all(Sp.x4),
-+            onTap: _busy ? null : _pickDay,
++            onTap: _busy ? null : (_range ? _pickRange : _pickDay),
 +            child: Row(
 +              children: [
 +                AppIcon(OsIcon.today, size: 22),
@@ -1092,9 +1563,20 @@ index 0000000..238735d
 +                  child: Column(
 +                    crossAxisAlignment: CrossAxisAlignment.start,
 +                    children: [
-+                      Text('Tag', style: AppText.captionMuted),
++                      Text(_range ? 'Zeitraum' : 'Tag',
++                          style: AppText.captionMuted),
 +                      const SizedBox(height: 2),
-+                      Text(dayLabel, style: AppText.title),
++                      Text(
++                        _range
++                            ? '${_fmtDate(_from)} – ${_fmtDate(_to)}'
++                            : dayLabel,
++                        style: AppText.title,
++                      ),
++                      if (_range) ...[
++                        const SizedBox(height: 2),
++                        Text('$_rangeDays Tage · max. $_maxRangeDays',
++                            style: AppText.captionMuted),
++                      ],
 +                    ],
 +                  ),
 +                ),
@@ -1112,22 +1594,29 @@ index 0000000..238735d
 +              children: [
 +                _toggle(
 +                  'PDF-Bericht',
-+                  '2 Seiten: 24-h-Pulsband, Stundentabelle, Tachogramm, '
-+                      'RR-Verteilung, Kennzahlen',
++                  _range
++                      ? 'Ein PDF: Übersichtsseite (Kennzahlen, Verlauf, '
++                          'Tabelle je Tag) + je Tag die 2 bekannten Seiten'
++                      : '2 Seiten: 24-h-Pulsband, Stundentabelle, Tachogramm, '
++                          'RR-Verteilung, Kennzahlen',
 +                  _pdf,
 +                  (v) => setState(() => _pdf = v),
 +                ),
 +                Divider(height: Sp.x3, thickness: 1, color: AppColors.divider),
 +                _toggle(
 +                  'Puls je Sekunde (CSV)',
-+                  'epoch_s, zeit_lokal, puls_bpm — bis zu 86.400 Zeilen',
++                  _range
++                      ? 'eine Datei je Tag: epoch_s, zeit_lokal, puls_bpm'
++                      : 'epoch_s, zeit_lokal, puls_bpm — bis zu 86.400 Zeilen',
 +                  _csvHr,
 +                  (v) => setState(() => _csvHr = v),
 +                ),
 +                Divider(height: Sp.x3, thickness: 1, color: AppColors.divider),
 +                _toggle(
 +                  'Herzschläge RR (CSV)',
-+                  'epoch_ms, zeit_lokal, rr_ms, momentan_bpm — jeder erfasste Schlag',
++                  _range
++                      ? 'eine Datei je Tag: epoch_ms, zeit_lokal, rr_ms, momentan_bpm'
++                      : 'epoch_ms, zeit_lokal, rr_ms, momentan_bpm — jeder erfasste Schlag',
 +                  _csvRr,
 +                  (v) => setState(() => _csvRr = v),
 +                ),
@@ -1162,7 +1651,30 @@ index 0000000..238735d
 +              ),
 +            ),
 +          ],
-+          if (s != null) ...[
++          if (r != null) ...[
++            const SizedBox(height: Sp.x4),
++            Text('Zuletzt erstellt', style: AppText.title),
++            const SizedBox(height: Sp.x2),
++            SurfaceCard(
++              padding: const EdgeInsets.all(Sp.x4),
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: [
++                  _kv('Tage', '${r.days.length} mit Daten'
++                      '${r.missingDays.isEmpty ? '' : ', ${r.missingDays.length} ohne'}'),
++                  _kv('Dateien',
++                      '${r.pdfPath != null ? '1 PDF (${1 + 2 * r.days.length} Seiten)' : 'kein PDF'}'
++                      '${r.csvPaths.isEmpty ? '' : ', ${r.csvPaths.length} CSV'}'),
++                  if (r.days.isNotEmpty)
++                    _kv('Ø Puls',
++                        '${_rangeMean(r.days).round()} bpm über den Zeitraum'),
++                  if (r.missingDays.isNotEmpty)
++                    _kv('Keine Daten', r.missingDays.map(_shortId).join(', ')),
++                ],
++              ),
++            ),
++          ],
++          if (s != null && !_range) ...[
 +            const SizedBox(height: Sp.x4),
 +            Text('Zuletzt erstellt', style: AppText.title),
 +            const SizedBox(height: Sp.x2),
@@ -1197,6 +1709,21 @@ index 0000000..238735d
 +        ],
 +      ),
 +    );
++  }
++
++  static double _rangeMean(List<HeartReportStats> days) {
++    var n = 0;
++    var sum = 0.0;
++    for (final d in days) {
++      n += d.samples;
++      sum += d.meanBpm * d.samples;
++    }
++    return n == 0 ? 0 : sum / n;
++  }
++
++  static String _shortId(String dayId) {
++    final p = dayId.split('-');
++    return p.length == 3 ? '${p[2]}.${p[1]}.' : dayId;
 +  }
 +
 +  Widget _toggle(
