@@ -1,0 +1,841 @@
+diff --git a/lib/backup/drive_backup.dart b/lib/backup/drive_backup.dart
+new file mode 100644
+index 0000000..6f5a52e
+--- /dev/null
++++ b/lib/backup/drive_backup.dart
+@@ -0,0 +1,480 @@
++// CM Health v2.3.1 — Automatische Sicherung nach Google Drive.
++//
++// Was gesichert wird (Entscheidung 08.09.2026):
++//  * täglich (Nachtfenster ab 2 Uhr, auch über Mobilfunk): Herzreport-PDF,
++//    1-Hz-Puls-CSV und RR-CSV des VORTAGS — dieselben Dateien wie „Herzreport
++//    exportieren", nur automatisch, ca. 5 MB je Tag;
++//  * wöchentlich: komprimierter Datenbank-Schnappschuss
++//    (cm-health-datenbank-YYYY-MM-DD.db.gz, VACUUM INTO + gzip), die letzten
++//    vier bleiben im Ordner.
++//
++// Wohin: In einen Ordner, den der Nutzer einmalig über den Android-Dateidialog
++// (Storage Access Framework) wählt — z. B. in der Google-Drive-App. Die App
++// bekommt eine dauerhafte Schreibberechtigung nur auf diesen Ordner; Google-
++// Konto, Drive-API oder Anmeldung in der App sind nicht nötig. Der Upload in die
++// Cloud übernimmt die Drive-App selbst.
++//
++// Wie: Kein WorkManager (der Hintergrund-Isolate blockiert sich mit der
++// Haupt-Engine an der Datenbank — main.dart bricht solche Tasks bewusst ab).
++// Stattdessen läuft alles im Haupt-Isolate: ein 15-Minuten-Timer prüft, ob der
++// Vortag schon gesichert ist, und holt Versäumtes (bis 7 Tage) nach — der
++// BLE-Vordergrunddienst hält die Engine ohnehin rund um die Uhr am Leben (so
++// feuert auch der Wecker-Timer zuverlässig um 04:30).
++
++import 'dart:async';
++import 'dart:io';
++import 'dart:isolate';
++
++import 'package:flutter/foundation.dart';
++import 'package:flutter/services.dart';
++import 'package:path_provider/path_provider.dart';
++
++import '../data/db.dart';
++import '../notify/notification_service.dart';
++import '../report/heart_report.dart';
++import '../state/prefs.dart';
++
++class DriveFolderInfo {
++  final String uri;
++  final String? name;
++  final String provider;
++  const DriveFolderInfo({required this.uri, this.name, required this.provider});
++
++  String get label =>
++      name == null || name!.isEmpty ? provider : '$name ($provider)';
++}
++
++class DriveFile {
++  final String name;
++  final int size;
++  final int modifiedMs;
++  const DriveFile(this.name, this.size, this.modifiedMs);
++}
++
++/// Dünne Hülle um den nativen Kanal `cm_health/backup` (BackupBridge.kt).
++class DriveBackupNative {
++  static const MethodChannel _ch = MethodChannel('cm_health/backup');
++
++  static DriveFolderInfo? _info(dynamic m) {
++    if (m is! Map) return null;
++    return DriveFolderInfo(
++      uri: '${m['uri']}',
++      name: m['name'] as String?,
++      provider: '${m['provider'] ?? ''}',
++    );
++  }
++
++  /// Öffnet den System-Ordnerdialog; null = abgebrochen.
++  static Future<DriveFolderInfo?> pickFolder() async =>
++      _info(await _ch.invokeMethod<dynamic>('pickFolder'));
++
++  static Future<DriveFolderInfo?> folderInfo() async =>
++      _info(await _ch.invokeMethod<dynamic>('folderInfo'));
++
++  static Future<void> releaseFolder() => _ch.invokeMethod<void>('releaseFolder');
++
++  /// Schreibt die lokale Datei [path] als [name] in den Ordner (überschreibt).
++  static Future<int> writeFile(String name, String mime, String path) async {
++    final n = await _ch.invokeMethod<dynamic>(
++        'writeFile', {'name': name, 'mime': mime, 'path': path});
++    return (n as num?)?.toInt() ?? 0;
++  }
++
++  static Future<List<DriveFile>> listFiles() async {
++    final raw = await _ch.invokeMethod<dynamic>('listFiles');
++    final out = <DriveFile>[];
++    if (raw is List) {
++      for (final e in raw) {
++        if (e is Map) {
++          out.add(DriveFile(
++            '${e['name']}',
++            (e['size'] as num?)?.toInt() ?? 0,
++            (e['modified'] as num?)?.toInt() ?? 0,
++          ));
++        }
++      }
++    }
++    return out;
++  }
++
++  static Future<bool> deleteFile(String name) async =>
++      (await _ch.invokeMethod<dynamic>('deleteFile', {'name': name}) as bool?) ??
++      false;
++}
++
++/// Zustand + Ablaufsteuerung der Sicherung. Lebt in AppState (Haupt-Isolate).
++class DriveBackupService extends ChangeNotifier {
++  static const _kEnabled = 'cm_drive_enabled';
++  static const _kWeeklyDb = 'cm_drive_weekly_db';
++  static const _kLastOkMs = 'cm_drive_last_ok_ms';
++  static const _kLastError = 'cm_drive_last_error';
++  static const _kLastErrorMs = 'cm_drive_last_error_ms';
++  static const _kLastSnapshotMs = 'cm_drive_last_snapshot_ms';
++  static const _kDoneDays = 'cm_drive_done_days';
++  static const _kLastSummary = 'cm_drive_last_summary';
++  static const _kNotifiedDay = 'cm_drive_notified_day';
++
++  static const int notificationId = 3200;
++  static const Duration tickEvery = Duration(minutes: 15);
++  static const int nightHour = 2; // ab 2 Uhr darf gesichert werden
++  static const int catchUpDays = 7; // so weit holt der Nachtlauf selbst nach
++  static const int keepSnapshots = 4;
++  static const String snapshotPrefix = 'cm-health-datenbank-';
++
++  final void Function(String) _log;
++  Timer? _timer;
++  Timer? _kick;
++  bool _busy = false;
++  String _progress = '';
++  DriveFolderInfo? _folder;
++
++  DriveBackupService({required void Function(String) log}) : _log = log;
++
++  // ── Zustand ───────────────────────────────────────────────────────────────
++
++  bool get enabled => Prefs.getBool(_kEnabled, false);
++  bool get weeklyDb => Prefs.getBool(_kWeeklyDb, true);
++  bool get busy => _busy;
++  String get progress => _progress;
++  DriveFolderInfo? get folder => _folder;
++
++  DateTime? get lastOkAt => _ms(_kLastOkMs);
++  DateTime? get lastErrorAt => _ms(_kLastErrorMs);
++  DateTime? get lastSnapshotAt => _ms(_kLastSnapshotMs);
++  String get lastError => Prefs.getString(_kLastError, '');
++  String get lastSummary => Prefs.getString(_kLastSummary, '');
++
++  static DateTime? _ms(String key) {
++    final v = Prefs.getInt(key, 0);
++    return v == 0 ? null : DateTime.fromMillisecondsSinceEpoch(v);
++  }
++
++  Set<String> get doneDays {
++    final s = Prefs.getString(_kDoneDays, '');
++    return s.isEmpty ? <String>{} : s.split(',').toSet();
++  }
++
++  void _markDone(String dayId) {
++    final all = doneDays..add(dayId);
++    final sorted = all.toList()..sort();
++    // Nur die letzten 120 Tage merken — reicht für Nachholen/Anzeige.
++    final keep = sorted.length > 120 ? sorted.sublist(sorted.length - 120) : sorted;
++    Prefs.setString(_kDoneDays, keep.join(','));
++  }
++
++  Future<void> setEnabled(bool v) async {
++    Prefs.setBool(_kEnabled, v);
++    _log('[DRIVE] Sicherung ${v ? 'eingeschaltet' : 'ausgeschaltet'}');
++    notifyListeners();
++    if (v) _scheduleKick(const Duration(seconds: 5));
++  }
++
++  Future<void> setWeeklyDb(bool v) async {
++    Prefs.setBool(_kWeeklyDb, v);
++    notifyListeners();
++  }
++
++  // ── Lebenszyklus ──────────────────────────────────────────────────────────
++
++  Future<void> init() async {
++    await refreshFolder();
++    _timer?.cancel();
++    _timer = Timer.periodic(tickEvery, (_) => unawaited(_tick('timer')));
++    // Kurz nach dem Start einmal prüfen (App wurde evtl. nachts neu gestartet).
++    _scheduleKick(const Duration(seconds: 90));
++    _log('[DRIVE] init: enabled=$enabled folder=${_folder?.label ?? '-'} '
++        'lastOk=${lastOkAt ?? '-'} done=${doneDays.length}');
++  }
++
++  @override
++  void dispose() {
++    _timer?.cancel();
++    _kick?.cancel();
++    super.dispose();
++  }
++
++  void _scheduleKick(Duration d) {
++    _kick?.cancel();
++    _kick = Timer(d, () => unawaited(_tick('kick')));
++  }
++
++  Future<void> refreshFolder() async {
++    try {
++      _folder = await DriveBackupNative.folderInfo();
++    } catch (e) {
++      _log('[DRIVE] folderInfo: $e');
++      _folder = null;
++    }
++    notifyListeners();
++  }
++
++  /// Ordner über den System-Dialog wählen. true = neuer Ordner gesetzt.
++  Future<bool> pickFolder() async {
++    try {
++      final info = await DriveBackupNative.pickFolder();
++      if (info == null) return false;
++      _folder = info;
++      _log('[DRIVE] Ordner gewählt: ${info.label}');
++      Prefs.setString(_kLastError, '');
++      notifyListeners();
++      return true;
++    } catch (e) {
++      _setError('Ordnerwahl: $e', notify: false);
++      return false;
++    }
++  }
++
++  Future<void> releaseFolder() async {
++    try {
++      await DriveBackupNative.releaseFolder();
++    } catch (_) {}
++    _folder = null;
++    Prefs.setBool(_kEnabled, false);
++    notifyListeners();
++  }
++
++  // ── Ablauf ────────────────────────────────────────────────────────────────
++
++  static String dayIdOf(DateTime d) => HeartReport.dayIdOf(d);
++
++  /// Fällige Arbeit des Nachtlaufs (idempotent, nie parallel).
++  Future<void> _tick(String why) async {
++    if (!enabled || _busy) return;
++    final now = DateTime.now();
++    if (now.hour < nightHour) return; // 0–2 Uhr: Vortag noch nicht „fertig"
++    final pending = _pendingDays(now, catchUpDays);
++    final snap = weeklyDb && _snapshotDue(now);
++    if (pending.isEmpty && !snap) return;
++    _log('[DRIVE] Lauf ($why): Tage=${pending.join(',')} Schnappschuss=$snap');
++    await _run(days: pending, snapshot: snap, manual: false);
++  }
++
++  List<String> _pendingDays(DateTime now, int back) {
++    final done = doneDays;
++    final out = <String>[];
++    for (var i = back; i >= 1; i--) {
++      final id = dayIdOf(DateTime(now.year, now.month, now.day - i));
++      if (!done.contains(id)) out.add(id);
++    }
++    return out;
++  }
++
++  bool _snapshotDue(DateTime now) {
++    final last = lastSnapshotAt;
++    if (last == null) return true;
++    return now.difference(last) > const Duration(days: 6, hours: 12);
++  }
++
++  /// „Jetzt sichern": Vortag (auch wenn schon gesichert) + fälliger
++  /// Schnappschuss. [withSnapshot] erzwingt den Schnappschuss.
++  Future<bool> runNow({bool withSnapshot = false}) async {
++    if (_busy) return false;
++    final now = DateTime.now();
++    final yesterday = dayIdOf(DateTime(now.year, now.month, now.day - 1));
++    final days = _pendingDays(now, catchUpDays);
++    if (!days.contains(yesterday)) days.add(yesterday);
++    return _run(
++      days: days,
++      snapshot: withSnapshot || (weeklyDb && _snapshotDue(now)),
++      manual: true,
++    );
++  }
++
++  /// Letzte [n] Tage nachholen (nur noch nicht gesicherte Tage).
++  Future<bool> backfill(int n) async {
++    if (_busy) return false;
++    final days = _pendingDays(DateTime.now(), n);
++    if (days.isEmpty) {
++      _setSummary('Nachholen: alle Tage der letzten $n Tage sind schon gesichert.');
++      return true;
++    }
++    return _run(days: days, snapshot: false, manual: true);
++  }
++
++  Future<bool> _run({
++    required List<String> days,
++    required bool snapshot,
++    required bool manual,
++  }) async {
++    if (_busy) return false;
++    _busy = true;
++    _setProgress('Starte …');
++    var ok = true;
++    var written = 0;
++    var noData = 0;
++    var bytes = 0;
++    final t0 = DateTime.now();
++    try {
++      if (_folder == null) await refreshFolder();
++      if (_folder == null) {
++        throw StateError(
++            'Kein Sicherungsordner gewählt (oder Berechtigung entzogen).');
++      }
++      for (var i = 0; i < days.length; i++) {
++        final id = days[i];
++        _setProgress('Tag ${i + 1}/${days.length}: $id');
++        try {
++          final b = await _backupDay(id);
++          if (b == null) {
++            noData++;
++            _log('[DRIVE] $id: keine Pulsdaten — übersprungen');
++          } else {
++            written++;
++            bytes += b;
++          }
++          _markDone(id);
++        } on PlatformException catch (e) {
++          // Schreibfehler (Ordner weg, Drive-App hakt): abbrechen, nicht als
++          // erledigt markieren — nächster Tick versucht es erneut.
++          throw StateError('$id: ${e.message ?? e.code}');
++        }
++      }
++      if (snapshot) {
++        _setProgress('Datenbank-Schnappschuss …');
++        bytes += await _snapshot();
++      }
++      final secs = DateTime.now().difference(t0).inSeconds;
++      Prefs.setInt(_kLastOkMs, DateTime.now().millisecondsSinceEpoch);
++      Prefs.setString(_kLastError, '');
++      final parts = <String>[
++        if (written > 0) '$written Tag${written == 1 ? '' : 'e'} gesichert',
++        if (noData > 0) '$noData ohne Daten',
++        if (snapshot) 'DB-Schnappschuss',
++        '${(bytes / 1048576).toStringAsFixed(1)} MB',
++        '$secs s',
++      ];
++      _setSummary(parts.join(' · '));
++      _log('[DRIVE] fertig: ${parts.join(' · ')}');
++    } catch (e) {
++      ok = false;
++      _setError('$e', notify: !manual);
++    } finally {
++      _busy = false;
++      _setProgress('');
++    }
++    return ok;
++  }
++
++  /// Sichert Report + CSVs eines Tages; null = keine Pulsdaten. Liefert Bytes.
++  Future<int?> _backupDay(String dayId) async {
++    final tmp = Directory(
++        '${(await getTemporaryDirectory()).path}/cm_drive_$dayId');
++    if (await tmp.exists()) await tmp.delete(recursive: true);
++    await tmp.create(recursive: true);
++    try {
++      HeartReportFiles files;
++      try {
++        files = await HeartReport.build(dayId: dayId, outDir: tmp);
++      } on StateError {
++        return null; // „Keine Pulsdaten für diesen Tag vorhanden."
++      }
++      var bytes = 0;
++      for (final e in [
++        (files.pdfPath, 'application/pdf'),
++        (files.csvHrPath, 'text/csv'),
++        (files.csvRrPath, 'text/csv'),
++      ]) {
++        final path = e.$1;
++        if (path == null) continue;
++        final name = path.substring(path.lastIndexOf('/') + 1);
++        bytes += await DriveBackupNative.writeFile(name, e.$2, path);
++      }
++      _log('[DRIVE] $dayId: 3 Dateien, ${(bytes / 1024).round()} KB');
++      return bytes;
++    } finally {
++      try {
++        await tmp.delete(recursive: true);
++      } catch (_) {}
++    }
++  }
++
++  /// VACUUM-INTO-Kopie → gzip (im Neben-Isolate) → Ordner; alte aufräumen.
++  Future<int> _snapshot() async {
++    final id = dayIdOf(DateTime.now());
++    final name = '$snapshotPrefix$id.db.gz';
++    final raw = await LocalDb.exportCopy();
++    final gz = '$raw.gz';
++    try {
++      await Isolate.run(() => _gzipFile(raw, gz));
++      final bytes = await DriveBackupNative.writeFile(name, 'application/gzip', gz);
++      Prefs.setInt(_kLastSnapshotMs, DateTime.now().millisecondsSinceEpoch);
++      _log('[DRIVE] Schnappschuss $name: ${(bytes / 1048576).toStringAsFixed(1)} MB');
++      await _pruneSnapshots();
++      return bytes;
++    } finally {
++      for (final p in [raw, gz]) {
++        try {
++          final f = File(p);
++          if (await f.exists()) await f.delete();
++        } catch (_) {}
++      }
++    }
++  }
++
++  static Future<void> _gzipFile(String src, String dst) async {
++    final out = File(dst).openWrite();
++    await File(src).openRead().transform(gzip.encoder).pipe(out);
++  }
++
++  Future<void> _pruneSnapshots() async {
++    try {
++      final files = await DriveBackupNative.listFiles();
++      final snaps = files
++          .where((f) => f.name.startsWith(snapshotPrefix) && f.name.endsWith('.db.gz'))
++          .toList()
++        ..sort((a, b) => a.name.compareTo(b.name));
++      while (snaps.length > keepSnapshots) {
++        final old = snaps.removeAt(0);
++        await DriveBackupNative.deleteFile(old.name);
++        _log('[DRIVE] alter Schnappschuss gelöscht: ${old.name}');
++      }
++    } catch (e) {
++      _log('[DRIVE] Aufräumen: $e');
++    }
++  }
++
++  // ── Status/Fehler ─────────────────────────────────────────────────────────
++
++  void _setProgress(String p) {
++    _progress = p;
++    notifyListeners();
++  }
++
++  void _setSummary(String s) {
++    Prefs.setString(_kLastSummary, s);
++    notifyListeners();
++  }
++
++  void _setError(String msg, {required bool notify}) {
++    final clean = msg.replaceFirst('Bad state: ', '');
++    Prefs.setString(_kLastError, clean);
++    Prefs.setInt(_kLastErrorMs, DateTime.now().millisecondsSinceEpoch);
++    _log('[DRIVE] FEHLER: $clean');
++    notifyListeners();
++    if (!notify) return;
++    // Höchstens eine Benachrichtigung je Tag.
++    final today = dayIdOf(DateTime.now());
++    if (Prefs.getString(_kNotifiedDay, '') == today) return;
++    Prefs.setString(_kNotifiedDay, today);
++    unawaited(NotificationService.instance.showDevice(
++      id: notificationId,
++      title: 'Sicherung nach Drive fehlgeschlagen',
++      body: clean.length > 200 ? '${clean.substring(0, 200)}…' : clean,
++    ));
++  }
++
++  /// Kurztext für Diagnose-Export.
++  String diagnoseText() {
++    final b = StringBuffer();
++    b.writeln('aktiv: $enabled · wöchentlicher DB-Schnappschuss: $weeklyDb');
++    b.writeln('Ordner: ${_folder?.label ?? 'keiner'}');
++    b.writeln('letzter Erfolg: ${lastOkAt ?? '-'}');
++    b.writeln('letzter Schnappschuss: ${lastSnapshotAt ?? '-'}');
++    b.writeln('letzter Fehler: ${lastError.isEmpty ? '-' : '$lastError (${lastErrorAt ?? '-'})'}');
++    b.writeln('letzte Zusammenfassung: ${lastSummary.isEmpty ? '-' : lastSummary}');
++    final d = doneDays.toList()..sort();
++    b.writeln('gesicherte Tage: ${d.length}'
++        '${d.isEmpty ? '' : ' (${d.first} … ${d.last})'}');
++    return b.toString();
++  }
++}
+diff --git a/lib/state/app_state.dart b/lib/state/app_state.dart
+index 96f6871..60b0d7e 100644
+--- a/lib/state/app_state.dart
++++ b/lib/state/app_state.dart
+@@ -55,6 +55,7 @@ import '../gps/gps_source.dart';
+ import '../gps/route_tracker.dart';
+ import '../gps/screen_wake.dart';
+ import '../data/local_repository_impl.dart';
++import '../backup/drive_backup.dart';
+ import '../notify/battery_forecast.dart';
+ import '../notify/notification_center.dart';
+ import '../notify/notification_event.dart';
+@@ -159,6 +160,8 @@ class AppState extends ChangeNotifier {
+   final GestureSettings gestureSettings = GestureSettings();
+   late final GestureDispatcher _gestureDispatcher;
+   late final WakeEngine wakeEngine; // CM Health v2.1.0 Handy-Wecker
++  late final DriveBackupService driveBackup =
++      DriveBackupService(log: _log); // CM Health v2.3.1 Drive-Sicherung
+ 
+   /// Relay selected phone-app notifications to the strap as a buzz (Android only).
+   /// Exposed for the settings UI; buzzes via the live BLE engine when connected.
+@@ -1136,6 +1139,7 @@ class AppState extends ChangeNotifier {
+     _alarmGraceTimer?.cancel();
+     _alarmGraceTimer = null;
+     wakeEngine.dispose(); // CM Health v2.1.0 — Weck-Timer einsammeln
++    driveBackup.dispose(); // CM Health v2.3.1 — Sicherungs-Timer einsammeln
+     _spotTimer?.cancel();
+     _spotTimer = null;
+     _breathingRecomputeTimer?.cancel();
+@@ -1832,6 +1836,7 @@ class AppState extends ChangeNotifier {
+     await _loadVerboseLog();
+     unawaited(_cmPurgePhantomDaysOnce());
+     await wakeEngine.init();
++    await driveBackup.init(); // CM v2.3.1: nächtliche Drive-Sicherung planen
+     // Band-gesture mapping: load the saved action + query native capabilities so the
+     // settings UI knows what this platform supports. Best-effort, non-blocking.
+     unawaited(gestureSettings.bootstrap());
+diff --git a/lib/ui/backup/drive_backup_screen.dart b/lib/ui/backup/drive_backup_screen.dart
+new file mode 100644
+index 0000000..4215221
+--- /dev/null
++++ b/lib/ui/backup/drive_backup_screen.dart
+@@ -0,0 +1,276 @@
++// CM Health v2.3.1 — Einstellungen „Sicherung nach Drive".
++//
++// Ordner wählen (Android-Dateidialog → Google-Drive-App), Sicherung ein/aus,
++// wöchentlicher Datenbank-Schnappschuss, Status der letzten Läufe, manuelles
++// Sichern und Nachholen der letzten 30 Tage. Logik: lib/backup/drive_backup.dart.
++
++import 'package:flutter/material.dart';
++import 'package:provider/provider.dart';
++
++import '../../backup/drive_backup.dart';
++import '../../state/app_state.dart';
++import '../../theme/theme.dart';
++import '../../theme/tokens.dart';
++import '../design/design.dart';
++import '../kit/kit.dart';
++
++class DriveBackupScreen extends StatelessWidget {
++  const DriveBackupScreen({super.key});
++
++  @override
++  Widget build(BuildContext context) {
++    final svc = context.read<AppState>().driveBackup;
++    return AppScaffold(
++      title: 'Sicherung nach Drive',
++      body: ListenableBuilder(
++        listenable: svc,
++        builder: (context, _) => _Body(svc: svc),
++      ),
++    );
++  }
++}
++
++class _Body extends StatelessWidget {
++  final DriveBackupService svc;
++  const _Body({required this.svc});
++
++  static String _fmt(DateTime? d) {
++    if (d == null) return 'noch nie';
++    String two(int v) => v.toString().padLeft(2, '0');
++    return '${two(d.day)}.${two(d.month)}.${d.year} ${two(d.hour)}:${two(d.minute)}';
++  }
++
++  Future<void> _pick(BuildContext context) async {
++    final ok = await svc.pickFolder();
++    if (!context.mounted) return;
++    if (ok) {
++      ScaffoldMessenger.of(context).showSnackBar(
++        SnackBar(content: Text('Ordner gesetzt: ${svc.folder?.label ?? ''}')),
++      );
++    }
++  }
++
++  Future<void> _runNow(BuildContext context, {bool snapshot = false}) async {
++    final ok = await svc.runNow(withSnapshot: snapshot);
++    if (!context.mounted) return;
++    ScaffoldMessenger.of(context).showSnackBar(
++      SnackBar(
++        content: Text(ok
++            ? 'Sicherung erledigt: ${svc.lastSummary}'
++            : 'Sicherung fehlgeschlagen: ${svc.lastError}'),
++      ),
++    );
++  }
++
++  Future<void> _backfill(BuildContext context) async {
++    final ok = await svc.backfill(30);
++    if (!context.mounted) return;
++    ScaffoldMessenger.of(context).showSnackBar(
++      SnackBar(
++        content: Text(ok
++            ? 'Nachholen erledigt: ${svc.lastSummary}'
++            : 'Nachholen fehlgeschlagen: ${svc.lastError}'),
++      ),
++    );
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final folder = svc.folder;
++    final busy = svc.busy;
++    final hasFolder = folder != null;
++    return ListView(
++      padding: EdgeInsets.fromLTRB(
++          Sp.screen, Sp.x2, Sp.screen, dsBottomGutter(context)),
++      children: [
++        Text('Zielordner', style: AppText.title),
++        const SizedBox(height: Sp.x2),
++        SurfaceCard(
++          padding: const EdgeInsets.all(Sp.x4),
++          onTap: busy ? null : () => _pick(context),
++          child: Row(
++            children: [
++              AppIcon(OsIcon.server, size: 22),
++              const SizedBox(width: Sp.x3),
++              Expanded(
++                child: Column(
++                  crossAxisAlignment: CrossAxisAlignment.start,
++                  children: [
++                    Text(hasFolder ? 'Ordner' : 'Kein Ordner gewählt',
++                        style: AppText.captionMuted),
++                    const SizedBox(height: 2),
++                    Text(
++                      folder?.label ?? 'Antippen und Ordner wählen',
++                      style: AppText.title,
++                    ),
++                  ],
++                ),
++              ),
++              Text(hasFolder ? 'Ändern' : 'Wählen',
++                  style: AppText.captionMuted),
++            ],
++          ),
++        ),
++        const SizedBox(height: Sp.x2),
++        Text(
++          'Im Dateidialog links „Drive" (Google Drive) antippen, einen Ordner '
++          'öffnen oder anlegen und unten „Zugriff erlauben" bestätigen. Die App '
++          'darf danach nur in diesen einen Ordner schreiben; den Upload in die '
++          'Cloud übernimmt die Drive-App.',
++          style: AppText.captionMuted,
++        ),
++        const SizedBox(height: Sp.x4),
++        Text('Sicherung', style: AppText.title),
++        const SizedBox(height: Sp.x2),
++        SurfaceCard(
++          padding:
++              const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x2),
++          child: Column(
++            children: [
++              _switch(
++                'Automatisch sichern',
++                'Nachts ab 2 Uhr (auch über Mobilfunk): Herzreport-PDF, '
++                    'Puls-CSV und RR-CSV des Vortags, ca. 5 MB. Versäumte '
++                    'Nächte werden beim nächsten Lauf nachgeholt.',
++                svc.enabled,
++                hasFolder && !busy ? (v) => svc.setEnabled(v) : null,
++              ),
++              Divider(height: Sp.x3, thickness: 1, color: AppColors.divider),
++              _switch(
++                'Wöchentlich Datenbank-Schnappschuss',
++                'Komplette Datenbank komprimiert (.db.gz, je nach Größe '
++                    '50–150 MB); die letzten ${DriveBackupService.keepSnapshots} '
++                    'bleiben im Ordner. Wiederherstellen über „Daten importieren".',
++                svc.weeklyDb,
++                hasFolder && !busy ? (v) => svc.setWeeklyDb(v) : null,
++              ),
++            ],
++          ),
++        ),
++        const SizedBox(height: Sp.x4),
++        Text('Status', style: AppText.title),
++        const SizedBox(height: Sp.x2),
++        SurfaceCard(
++          padding: const EdgeInsets.all(Sp.x4),
++          child: Column(
++            crossAxisAlignment: CrossAxisAlignment.start,
++            children: [
++              if (busy) ...[
++                Row(
++                  children: [
++                    const SizedBox(
++                      width: 16,
++                      height: 16,
++                      child: CircularProgressIndicator(strokeWidth: 2),
++                    ),
++                    const SizedBox(width: Sp.x3),
++                    Expanded(
++                        child: Text(svc.progress.isEmpty ? 'Läuft …' : svc.progress,
++                            style: AppText.body)),
++                  ],
++                ),
++                const SizedBox(height: Sp.x2),
++              ],
++              _kv('Letzter Erfolg', _fmt(svc.lastOkAt)),
++              if (svc.lastSummary.isNotEmpty) _kv('Zuletzt', svc.lastSummary),
++              _kv('Letzter Schnappschuss', _fmt(svc.lastSnapshotAt)),
++              _kv('Gesicherte Tage', '${svc.doneDays.length}'),
++              if (svc.lastError.isNotEmpty)
++                Padding(
++                  padding: const EdgeInsets.only(top: Sp.x2),
++                  child: Text(
++                    'Fehler (${_fmt(svc.lastErrorAt)}): ${svc.lastError}',
++                    style: AppText.body.copyWith(color: AppColors.critical),
++                  ),
++                ),
++            ],
++          ),
++        ),
++        const SizedBox(height: Sp.x4),
++        SizedBox(
++          width: double.infinity,
++          child: FilledButton.icon(
++            onPressed: hasFolder && !busy ? () => _runNow(context) : null,
++            icon: AppIcon(OsIcon.sync, size: 18),
++            label: const Text('Jetzt sichern (Vortag)'),
++            style: FilledButton.styleFrom(
++              padding: const EdgeInsets.symmetric(vertical: Sp.x3),
++            ),
++          ),
++        ),
++        const SizedBox(height: Sp.x2),
++        SizedBox(
++          width: double.infinity,
++          child: OutlinedButton(
++            onPressed: hasFolder && !busy ? () => _backfill(context) : null,
++            style: OutlinedButton.styleFrom(
++              padding: const EdgeInsets.symmetric(vertical: Sp.x3),
++            ),
++            child: const Text('Letzte 30 Tage nachholen'),
++          ),
++        ),
++        const SizedBox(height: Sp.x2),
++        SizedBox(
++          width: double.infinity,
++          child: OutlinedButton(
++            onPressed: hasFolder && !busy
++                ? () => _runNow(context, snapshot: true)
++                : null,
++            style: OutlinedButton.styleFrom(
++              padding: const EdgeInsets.symmetric(vertical: Sp.x3),
++            ),
++            child: const Text('Datenbank-Schnappschuss jetzt'),
++          ),
++        ),
++        if (hasFolder) ...[
++          const SizedBox(height: Sp.x4),
++          TextButton(
++            onPressed: busy ? null : () => svc.releaseFolder(),
++            child: Text('Ordner-Zugriff aufheben',
++                style: AppText.body.copyWith(color: AppColors.critical)),
++          ),
++        ],
++        const SizedBox(height: Sp.x4),
++        Text(
++          'Die Sicherung läuft in der App selbst (kein Hintergrund-Job des '
++          'Systems): solange die App mit dem Band verbunden ist, prüft sie alle '
++          '15 Minuten, ob der Vortag gesichert ist. Dateien gleichen Namens '
++          'werden überschrieben, daher bleibt der Ordner sauber.',
++          style: AppText.captionMuted,
++        ),
++      ],
++    );
++  }
++
++  Widget _switch(
++      String title, String sub, bool value, ValueChanged<bool>? onChanged) {
++    return Row(
++      children: [
++        Expanded(
++          child: Column(
++            crossAxisAlignment: CrossAxisAlignment.start,
++            children: [
++              Text(title, style: AppText.body),
++              const SizedBox(height: 2),
++              Text(sub, style: AppText.captionMuted),
++            ],
++          ),
++        ),
++        Switch(value: value, onChanged: onChanged),
++      ],
++    );
++  }
++
++  Widget _kv(String k, String v) {
++    return Padding(
++      padding: const EdgeInsets.symmetric(vertical: 3),
++      child: Row(
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: [
++          SizedBox(width: 130, child: Text(k, style: AppText.captionMuted)),
++          Expanded(child: Text(v, style: AppText.body)),
++        ],
++      ),
++    );
++  }
++}
+diff --git a/lib/ui/profile/profile_screen.dart b/lib/ui/profile/profile_screen.dart
+index 356e164..eb9f94a 100644
+--- a/lib/ui/profile/profile_screen.dart
++++ b/lib/ui/profile/profile_screen.dart
+@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
+ import 'package:share_plus/share_plus.dart';
+ import 'diagnose_export.dart';
+ import '../report/heart_report_screen.dart';
++import '../backup/drive_backup_screen.dart';
+ import 'package:url_launcher/url_launcher.dart';
+ 
+ import '../../data/db.dart';
+@@ -410,6 +411,23 @@ class ProfileScreen extends StatelessWidget {
+                 onTap: () => _backupSheet(rowCtx, app),
+               ),
+             ),
++            // CM Health v2.3.1: nächtliche Sicherung in einen Drive-Ordner.
++            ListenableBuilder(
++              listenable: app.driveBackup,
++              builder: (_, __) => ListRow(
++                icon: OsIcon.server,
++                title: 'Sicherung nach Drive',
++                value: app.driveBackup.folder == null
++                    ? 'Kein Ordner'
++                    : (app.driveBackup.enabled ? 'Nachts' : 'Aus'),
++                divider: true,
++                onTap: () => Navigator.of(context).push(
++                  MaterialPageRoute<void>(
++                    builder: (_) => const DriveBackupScreen(),
++                  ),
++                ),
++              ),
++            ),
+             // Blood work lives here rather than on a daily screen: it is a
+             // record you consult, not a number that changes overnight.
+             ListRow(
