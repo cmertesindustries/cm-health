@@ -53,8 +53,339 @@ index 6b3b686..cf3f664 100644
              android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
              android:exported="true">
              <intent-filter>
+diff --git a/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/BackupBridge.kt b/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/BackupBridge.kt
+new file mode 100644
+index 0000000..0b88dbe
+--- /dev/null
++++ b/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/BackupBridge.kt
+@@ -0,0 +1,292 @@
++package wtf.openstrap.openstrap_edge
++
++import android.app.Activity
++import android.content.Context
++import android.content.Intent
++import android.net.Uri
++import android.os.Handler
++import android.os.Looper
++import android.provider.DocumentsContract
++import android.util.Log
++import io.flutter.embedding.engine.FlutterEngine
++import io.flutter.plugin.common.MethodChannel
++import java.io.File
++import java.io.FileInputStream
++
++/**
++ * CM Health v2.3.1 — Sicherung nach Google Drive (oder jeden anderen
++ * Storage-Access-Framework-Anbieter).
++ *
++ * Der Nutzer wählt einmalig einen Ordner (ACTION_OPEN_DOCUMENT_TREE, z. B. in der
++ * Drive-App); die Berechtigung wird persistent übernommen, danach schreibt der
++ * Dart-Dienst nachts Dateien per DocumentsContract in diesen Ordner — ohne
++ * Google-Konto in der App, ohne Drive-API, ohne androidx.documentfile.
++ *
++ * Nur [pickFolder] braucht eine Activity (System-Dialog); alle anderen Aufrufe
++ * funktionieren mit dem Application-Context, also auch aus dem nächtlichen
++ * Hintergrundlauf heraus.
++ */
++object BackupBridge {
++    private const val TAG = "CMBackup"
++    const val CHANNEL = "cm_health/backup"
++    private const val REQUEST_CODE_PICK = 0x4B21
++    private const val PREFS = "cm_backup"
++    private const val KEY_TREE = "tree_uri"
++
++    @Volatile
++    var currentActivity: Activity? = null
++
++    private var pendingPick: MethodChannel.Result? = null
++    private val main = Handler(Looper.getMainLooper())
++
++    fun register(engine: FlutterEngine, context: Context) {
++        val app = context.applicationContext
++        MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
++            .setMethodCallHandler { call, result ->
++                try {
++                    when (call.method) {
++                        "pickFolder" -> pickFolder(result)
++                        "hasFolder" -> result.success(treeUri(app) != null)
++                        "folderInfo" -> result.success(folderInfo(app))
++                        "releaseFolder" -> {
++                            releaseFolder(app)
++                            result.success(true)
++                        }
++                        "writeFile" -> {
++                            val name = call.argument<String>("name")!!
++                            val mime = call.argument<String>("mime") ?: "application/octet-stream"
++                            val path = call.argument<String>("path")!!
++                            runOff(result) { writeFile(app, name, mime, File(path)) }
++                        }
++                        "listFiles" -> runOff(result) { listFiles(app) }
++                        "deleteFile" -> {
++                            val name = call.argument<String>("name")!!
++                            runOff(result) { deleteFile(app, name) }
++                        }
++                        else -> result.notImplemented()
++                    }
++                } catch (e: Exception) {
++                    Log.w(TAG, "channel ${call.method} failed", e)
++                    result.error("backup", e.message ?: e.toString(), null)
++                }
++            }
++    }
++
++    /** Datei-Operationen abseits des Main-Threads (Drive-Provider kann blockieren). */
++    private fun runOff(result: MethodChannel.Result, block: () -> Any?) {
++        Thread {
++            try {
++                val v = block()
++                main.post { result.success(v) }
++            } catch (e: Exception) {
++                Log.w(TAG, "backup op failed", e)
++                main.post { result.error("backup", e.message ?: e.toString(), null) }
++            }
++        }.start()
++    }
++
++    // ── Ordnerwahl ────────────────────────────────────────────────────────────
++
++    private fun pickFolder(result: MethodChannel.Result) {
++        val activity = currentActivity
++        if (activity == null) {
++            result.error("no_activity", "Ordnerwahl braucht die geöffnete App.", null)
++            return
++        }
++        if (pendingPick != null) {
++            result.error("busy", "Ordnerwahl läuft bereits.", null)
++            return
++        }
++        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
++            addFlags(
++                Intent.FLAG_GRANT_READ_URI_PERMISSION or
++                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
++                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
++            )
++        }
++        pendingPick = result
++        try {
++            @Suppress("DEPRECATION")
++            activity.startActivityForResult(intent, REQUEST_CODE_PICK)
++        } catch (e: Exception) {
++            pendingPick = null
++            result.error("pick", e.message ?: e.toString(), null)
++        }
++    }
++
++    /** Von MainActivity.onActivityResult aufgerufen; true = verbraucht. */
++    fun handleActivityResult(context: Context, requestCode: Int, resultCode: Int, data: Intent?): Boolean {
++        if (requestCode != REQUEST_CODE_PICK) return false
++        val result = pendingPick
++        pendingPick = null
++        val uri = data?.data
++        if (resultCode != Activity.RESULT_OK || uri == null) {
++            result?.success(null)
++            return true
++        }
++        try {
++            val app = context.applicationContext
++            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
++            app.contentResolver.takePersistableUriPermission(uri, flags)
++            // Alte Berechtigung freigeben, damit die Liste nicht wächst.
++            val old = treeUri(app)
++            if (old != null && old != uri) {
++                try {
++                    app.contentResolver.releasePersistableUriPermission(old, flags)
++                } catch (_: Exception) {
++                }
++            }
++            app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
++                .edit().putString(KEY_TREE, uri.toString()).apply()
++            Log.i(TAG, "backup folder set: $uri")
++            result?.success(folderInfo(app))
++        } catch (e: Exception) {
++            Log.w(TAG, "takePersistableUriPermission failed", e)
++            result?.error("pick", e.message ?: e.toString(), null)
++        }
++        return true
++    }
++
++    private fun treeUri(app: Context): Uri? {
++        val s = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_TREE, null)
++            ?: return null
++        val uri = Uri.parse(s)
++        // Berechtigung muss noch bestehen (Nutzer kann sie in den Einstellungen entziehen).
++        val ok = app.contentResolver.persistedUriPermissions.any {
++            it.uri == uri && it.isWritePermission
++        }
++        return if (ok) uri else null
++    }
++
++    private fun folderInfo(app: Context): Map<String, Any?>? {
++        val uri = treeUri(app) ?: return null
++        val docUri = DocumentsContract.buildDocumentUriUsingTree(
++            uri, DocumentsContract.getTreeDocumentId(uri)
++        )
++        var name: String? = null
++        try {
++            app.contentResolver.query(
++                docUri, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null
++            )?.use { c -> if (c.moveToFirst()) name = c.getString(0) }
++        } catch (e: Exception) {
++            Log.w(TAG, "folder name query failed", e)
++        }
++        val authority = uri.authority ?: ""
++        val provider = when {
++            authority.contains("google") && authority.contains("docs") -> "Google Drive"
++            authority.contains("externalstorage") -> "Gerätespeicher"
++            else -> authority
++        }
++        return mapOf("uri" to uri.toString(), "name" to name, "provider" to provider)
++    }
++
++    private fun releaseFolder(app: Context) {
++        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
++        val s = prefs.getString(KEY_TREE, null)
++        prefs.edit().remove(KEY_TREE).apply()
++        if (s != null) {
++            try {
++                app.contentResolver.releasePersistableUriPermission(
++                    Uri.parse(s),
++                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
++                )
++            } catch (_: Exception) {
++            }
++        }
++    }
++
++    // ── Dateien ───────────────────────────────────────────────────────────────
++
++    private fun requireTree(app: Context): Uri =
++        treeUri(app) ?: throw IllegalStateException("Kein Sicherungsordner gewählt oder Berechtigung entzogen.")
++
++    /** Liefert die Dokument-URI der Datei [name] im Ordner oder null. */
++    private fun findChild(app: Context, tree: Uri, name: String): Uri? {
++        val children = DocumentsContract.buildChildDocumentsUriUsingTree(
++            tree, DocumentsContract.getTreeDocumentId(tree)
++        )
++        app.contentResolver.query(
++            children,
++            arrayOf(
++                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
++                DocumentsContract.Document.COLUMN_DISPLAY_NAME
++            ),
++            null, null, null
++        )?.use { c ->
++            while (c.moveToNext()) {
++                if (c.getString(1) == name) {
++                    return DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0))
++                }
++            }
++        }
++        return null
++    }
++
++    /**
++     * Schreibt [src] als [name] in den Ordner; bestehende Datei gleichen Namens wird
++     * überschrieben (kein "name (1)"-Duplikat). Liefert die geschriebenen Bytes.
++     */
++    private fun writeFile(app: Context, name: String, mime: String, src: File): Long {
++        if (!src.exists()) throw IllegalArgumentException("Quelldatei fehlt: ${src.path}")
++        val tree = requireTree(app)
++        val existing = findChild(app, tree, name)
++        val target = existing ?: DocumentsContract.createDocument(
++            app.contentResolver,
++            DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)),
++            mime, name
++        ) ?: throw IllegalStateException("Datei konnte nicht angelegt werden: $name")
++        var written = 0L
++        val out = app.contentResolver.openOutputStream(target, "wt")
++            ?: throw IllegalStateException("Kein Schreibzugriff: $name")
++        out.use { o ->
++            FileInputStream(src).use { i ->
++                val buf = ByteArray(256 * 1024)
++                while (true) {
++                    val n = i.read(buf)
++                    if (n < 0) break
++                    o.write(buf, 0, n)
++                    written += n
++                }
++                o.flush()
++            }
++        }
++        return written
++    }
++
++    /** Alle Dateien im Ordner: name, size, modified (ms). */
++    private fun listFiles(app: Context): List<Map<String, Any?>> {
++        val tree = requireTree(app)
++        val children = DocumentsContract.buildChildDocumentsUriUsingTree(
++            tree, DocumentsContract.getTreeDocumentId(tree)
++        )
++        val out = ArrayList<Map<String, Any?>>()
++        app.contentResolver.query(
++            children,
++            arrayOf(
++                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
++                DocumentsContract.Document.COLUMN_SIZE,
++                DocumentsContract.Document.COLUMN_LAST_MODIFIED,
++                DocumentsContract.Document.COLUMN_MIME_TYPE
++            ),
++            null, null, null
++        )?.use { c ->
++            while (c.moveToNext()) {
++                if (c.getString(3) == DocumentsContract.Document.MIME_TYPE_DIR) continue
++                out.add(
++                    mapOf(
++                        "name" to c.getString(0),
++                        "size" to (if (c.isNull(1)) 0L else c.getLong(1)),
++                        "modified" to (if (c.isNull(2)) 0L else c.getLong(2))
++                    )
++                )
++            }
++        }
++        return out
++    }
++
++    private fun deleteFile(app: Context, name: String): Boolean {
++        val tree = requireTree(app)
++        val doc = findChild(app, tree, name) ?: return false
++        return DocumentsContract.deleteDocument(app.contentResolver, doc)
++    }
++}
+diff --git a/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/MainActivity.kt b/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/MainActivity.kt
+index 2591d4d..8973a41 100644
+--- a/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/MainActivity.kt
++++ b/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/MainActivity.kt
+@@ -36,6 +36,7 @@ class MainActivity : FlutterFragmentActivity() {
+         clearPendingHeadlessBoot()
+         super.onCreate(savedInstanceState)
+         CompanionBridge.currentActivity = this
++        BackupBridge.currentActivity = this // CM Health v2.3.1: SAF-Ordnerwahl
+         // Re-arm CDM device-presence observation for an already-associated band
+         // (idempotent; no-op below API 31 or when nothing is associated).
+         CompanionBridge.ensureObserving(applicationContext)
+@@ -56,6 +57,9 @@ class MainActivity : FlutterFragmentActivity() {
+         if (CompanionBridge.currentActivity === this) {
+             CompanionBridge.currentActivity = null
+         }
++        if (BackupBridge.currentActivity === this) {
++            BackupBridge.currentActivity = null
++        }
+         super.onDestroy()
+     }
+ 
+@@ -65,6 +69,10 @@ class MainActivity : FlutterFragmentActivity() {
+         if (CompanionBridge.handleActivityResult(applicationContext, requestCode, resultCode)) {
+             return
+         }
++        // CM Health v2.3.1: Ergebnis der Sicherungsordner-Wahl (SAF).
++        if (BackupBridge.handleActivityResult(applicationContext, requestCode, resultCode, data)) {
++            return
++        }
+         @Suppress("DEPRECATION")
+         super.onActivityResult(requestCode, resultCode, data)
+     }
 diff --git a/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/NativeChannels.kt b/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/NativeChannels.kt
-index 2b98277..2461484 100644
+index 2b98277..9234649 100644
 --- a/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/NativeChannels.kt
 +++ b/android/app/src/main/kotlin/wtf/openstrap/openstrap_edge/NativeChannels.kt
 @@ -7,7 +7,9 @@ import android.content.Intent
@@ -89,7 +420,15 @@ index 2b98277..2461484 100644
      private val ringHandler = Handler(Looper.getMainLooper())
      private var ringStopRunnable: Runnable? = null
  
-@@ -160,6 +170,48 @@ object NativeChannels {
+@@ -52,6 +62,7 @@ object NativeChannels {
+ 
+         HealthConnectSleepWriter.register(engine, app)
+         HealthConnectHeartRateWriter.register(engine, app)
++        BackupBridge.register(engine, app) // CM Health v2.3.1: Sicherung nach Drive
+ 
+         MethodChannel(engine.dartExecutor.binaryMessenger, EDGE_TRACKING_CHANNEL)
+             .setMethodCallHandler { call, result ->
+@@ -160,6 +171,48 @@ object NativeChannels {
                  }
              }
  
@@ -138,7 +477,7 @@ index 2b98277..2461484 100644
          // Tasker integration support. TaskerReceiver (a BroadcastReceiver, not a
          // Flutter plugin) writes directly to the native "openstrap_runtime"
          // SharedPreferences file — NOT through the shared_preferences PLUGIN,
-@@ -447,6 +499,91 @@ object NativeChannels {
+@@ -447,6 +500,91 @@ object NativeChannels {
          }
      }
  
@@ -254,7 +593,7 @@ index ce81bb5..dfc4e09 100644
      <string name="widget_battery_label">Band battery</string>
      <string name="widget_battery_description">Your strap\'s battery, from the last connection.</string>
 diff --git a/pubspec.yaml b/pubspec.yaml
-index f102c44..266e26a 100644
+index f102c44..aadc31b 100644
 --- a/pubspec.yaml
 +++ b/pubspec.yaml
 @@ -6,7 +6,7 @@ publish_to: 'none'
@@ -262,7 +601,7 @@ index f102c44..266e26a 100644
  # to FLUTTER_BUILD_NAME/FLUTTER_BUILD_NUMBER. See guides/IOS_INSTALLATION.md
  # "Version Numbers".
 -version: 0.9.26+57
-+version: 2.3.0+130
++version: 2.3.1+131
  
  environment:
    sdk: ^3.11.4
